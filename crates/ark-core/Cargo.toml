@@ -1,0 +1,9 @@
+[package]
+name = "ark-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+thiserror = "1.0"
+bytemuck = { version = "1.16", features = ["derive"] }
+async-trait = "0.1"

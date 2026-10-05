@@ -1,0 +1,17 @@
+[package]
+name = "ark-transport"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ark-core = { path = "../ark-core" }
+ark-crypto = { path = "../ark-crypto" }
+ark-protocol = { path = "../ark-protocol" }
+tokio = { version = "1.39", features = ["net", "rt", "sync", "time"] }
+async-trait = "0.1"
+thiserror = "1.0"
+tracing = "0.1"
+quinn = "0.11"
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+socket2 = "0.5"
+sha3 = "0.10"

@@ -1,0 +1,15 @@
+[package]
+name = "ark-protocol"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ark-core = { path = "../ark-core" }
+ark-crypto = { path = "../ark-crypto" }
+prost = "0.13"
+prost-types = "0.13"
+sha3 = "0.10"
+thiserror = "1.0"
+
+[build-dependencies]
+prost-build = "0.13"

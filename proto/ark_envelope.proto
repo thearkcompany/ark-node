@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package ark.protocol.v1;
+
+// ArkEnvelope represents a canon transport container in ARK protocol v1
+message ArkEnvelope {
+  // Protocol magic identifier and versioning header
+  bytes magic = 1;
+  
+  // Fast 64-byte L1-cache aligned header
+  bytes fast_header = 2;
+  
+  // Cryptographic sender identity (derived ArkID via SHA3-256)
+  bytes sender_id = 3;
+  
+  // Ephemeral recipient public key or key identifier
+  bytes recipient_id = 4;
+  
+  // Encrypted payload (max 64 KB)
+  bytes payload = 5;
+  
+  // Post-quantum signature (FN-DSA-512)
+  bytes signature = 6;
+  
+  // Core tag mask and dynamic TLV binary tags
+  uint64 core_tag_mask = 7;
+  repeated BinaryTag tags = 8;
+  
+  // Epoch timestamp (milliseconds)
+  uint64 timestamp = 9;
+}
+
+message BinaryTag {
+  uint32 tag_type = 1;
+  bytes tag_value = 2;
+}
+
+message ArkNodeStatus {
+  string node_id = 1;
+  string version = 2;
+  uint64 uptime_seconds = 3;
+  uint32 active_peers = 4;
+  int64 peer_median_time = 5;
+}

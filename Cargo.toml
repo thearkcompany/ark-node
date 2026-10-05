@@ -1,0 +1,53 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/ark-core",
+    "crates/ark-crypto",
+    "crates/ark-protocol",
+    "crates/ark-transport",
+    "crates/ark-time",
+    "crates/ark-cli",
+    "crates/ark-storage",
+    "crates/ark-crdt",
+    "crates/ark-blob",
+    "crates/ark-dns",
+    "crates/ark-vpn",
+    "crates/ark-wot",
+    "crates/ark-paas",
+    "satelites/ark-worker-wasm",
+    ".",
+]
+
+[package]
+name = "ark-node"
+version = "0.1.0"
+edition = "2021"
+authors = ["The ARK Company"]
+description = "Universal daemon for the ARK Sovereign P2P Network"
+
+[dependencies]
+ark-core = { path = "crates/ark-core" }
+ark-crypto = { path = "crates/ark-crypto" }
+ark-protocol = { path = "crates/ark-protocol" }
+ark-transport = { path = "crates/ark-transport" }
+ark-time = { path = "crates/ark-time" }
+ark-cli = { path = "crates/ark-cli" }
+ark-storage = { path = "crates/ark-storage" }
+ark-crdt = { path = "crates/ark-crdt" }
+ark-blob = { path = "crates/ark-blob" }
+ark-dns = { path = "crates/ark-dns" }
+ark-vpn = { path = "crates/ark-vpn" }
+ark-wot = { path = "crates/ark-wot" }
+ark-paas = { path = "crates/ark-paas" }
+clap = { version = "4.5", features = ["derive"] }
+tokio = { version = "1.39", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1.0"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
