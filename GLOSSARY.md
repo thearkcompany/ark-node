@@ -46,3 +46,18 @@ A fixed-memory ($\le 24\text{ MB}$) anti-replay structure composed of two genera
 
 ### Peer-Median-Time (PMT)
 A decentralized, NTP-independent time synchronization mechanism computed in user-space as the median offset across direct peer connections, enforcing a strict maximum drift window of $\pm 30\text{ seconds}$.
+
+## Persistence & Storage Engine (GCP-06)
+
+### Retention Class
+A deterministic classification assigned to an `ArkEnvelope` defining its storage lifecycle, mutability rules, and persistence layer (Class 0: Ephemeral/RAM-only, Class 1: Append-Only, Class 2: Replaceable Simple, Class 3: Replaceable Parameterized, Class 4: Bounded TTL, Class 5: Strict WORM).
+
+### Strict WORM (Write-Once-Read-Many)
+An irreversible, tamper-evident storage policy (Retention Class 5) reserved for equivocation proofs and audit receipts. Overwrites with divergent content and deletion requests are rejected with hard errors.
+
+### Parameterized Replaceable
+A storage indexing strategy (Retention Class 3) where envelopes retain only the latest version keyed by the composite tuple `(sender_key_id, kind, param_d)`, enabling mutable KV state and DNS record updates while preventing duplicate buildup.
+
+### Bivariate LWW (Last-Write-Wins)
+A conflict-resolution rule applied to replaceable storage entries and headless nodes that deterministically orders competing envelopes by `(timestamp, envelope_id)`. The highest timestamp wins, and exact timestamp collisions are resolved by lexicographical comparison of the 32-byte cryptographic envelope digest.
+
