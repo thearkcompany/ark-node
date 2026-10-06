@@ -145,6 +145,135 @@ impl MstNode {
         self.cached_hash = Some(out);
         out
     }
+
+    /// Returns the slice/vector of 32-byte hashes for each child slot in this node.
+    pub fn child_hashes(&self) -> Vec<[u8; 32]> {
+        self.children
+            .iter()
+            .map(|c| match c {
+                Some(child) => child.cached_hash.unwrap_or([0u8; 32]),
+                None => [0u8; 32],
+            })
+            .collect()
+    }
+
+    /// Canonical binary serialization of an MstNode.
+    /// Format:
+    /// [level: 4B BE]
+    /// [entries_len: 4B BE]
+    /// For each entry i:
+    ///   [child_hash_before: 32B]
+    ///   [key_len: 4B BE]
+    ///   [key: key_len bytes]
+    ///   [envelope_id: 32B]
+    ///   [timestamp: 8B BE]
+    /// [last_child_hash: 32B]
+    pub fn serialize(&mut self) -> Vec<u8> {
+        let _ = self.hash(); // Ensure hashes are computed
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&self.level.to_be_bytes());
+        bytes.extend_from_slice(&(self.entries.len() as u32).to_be_bytes());
+
+        for (i, entry) in self.entries.iter().enumerate() {
+            let child_hash = match &self.children[i] {
+                Some(child) => child.cached_hash.unwrap_or([0u8; 32]),
+                None => [0u8; 32],
+            };
+            bytes.extend_from_slice(&child_hash);
+            bytes.extend_from_slice(&(entry.key.len() as u32).to_be_bytes());
+            bytes.extend_from_slice(&entry.key);
+            bytes.extend_from_slice(&entry.envelope_id);
+            bytes.extend_from_slice(&entry.timestamp.to_be_bytes());
+            bytes.push(if entry.is_tombstone { 1u8 } else { 0u8 });
+        }
+
+        let last_child_hash = match self.children.last() {
+            Some(Some(child)) => child.cached_hash.unwrap_or([0u8; 32]),
+            _ => [0u8; 32],
+        };
+        bytes.extend_from_slice(&last_child_hash);
+        bytes
+    }
+
+    /// Deserializes binary data into an MstNode skeleton with child slots set to None,
+    /// returning the node and its child hashes.
+    pub fn deserialize(bytes: &[u8]) -> Result<(Self, Vec<[u8; 32]>), crate::error::ArkCrdtError> {
+        if bytes.len() < 8 {
+            return Err(crate::error::ArkCrdtError::Serialization(
+                "Node serialization too short (missing level and entries_len)".into(),
+            ));
+        }
+
+        let level = u32::from_be_bytes(bytes[0..4].try_into().unwrap());
+        let entries_len = u32::from_be_bytes(bytes[4..8].try_into().unwrap()) as usize;
+
+        let mut offset = 8;
+        let mut entries = Vec::with_capacity(entries_len);
+        let mut child_hashes = Vec::with_capacity(entries_len + 1);
+
+        for _ in 0..entries_len {
+            if offset + 36 > bytes.len() {
+                return Err(crate::error::ArkCrdtError::Serialization(
+                    "Unexpected EOF reading child_hash and key_len".into(),
+                ));
+            }
+            let mut child_h = [0u8; 32];
+            child_h.copy_from_slice(&bytes[offset..offset + 32]);
+            offset += 32;
+            child_hashes.push(child_h);
+
+            let key_len = u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
+            offset += 4;
+
+            if offset + key_len + 32 + 8 + 1 > bytes.len() {
+                return Err(crate::error::ArkCrdtError::Serialization(
+                    "Unexpected EOF reading entry content".into(),
+                ));
+            }
+
+            let key = bytes[offset..offset + key_len].to_vec();
+            offset += key_len;
+
+            let mut env_id = [0u8; 32];
+            env_id.copy_from_slice(&bytes[offset..offset + 32]);
+            offset += 32;
+
+            let timestamp = u64::from_be_bytes(bytes[offset..offset + 8].try_into().unwrap());
+            offset += 8;
+
+            let is_tombstone = bytes[offset] != 0;
+            offset += 1;
+
+            entries.push(MstEntry::with_tombstone(key, env_id, timestamp, is_tombstone));
+        }
+
+        if offset + 32 > bytes.len() {
+            return Err(crate::error::ArkCrdtError::Serialization(
+                "Unexpected EOF reading last_child_hash".into(),
+            ));
+        }
+        let mut last_child_h = [0u8; 32];
+        last_child_h.copy_from_slice(&bytes[offset..offset + 32]);
+        child_hashes.push(last_child_h);
+
+        let children = vec![None; entries_len + 1];
+
+        // Compute the expected hash directly from the serialized bytes
+        let mut hasher = Sha3_256::new();
+        hasher.update(bytes);
+        let digest = hasher.finalize();
+        let mut computed_hash = [0u8; 32];
+        computed_hash.copy_from_slice(&digest);
+
+        let node = MstNode {
+            level,
+            entries,
+            children,
+            cached_hash: Some(computed_hash),
+        };
+
+        Ok((node, child_hashes))
+    }
 }
 
 /// Merkle Search Tree data structure.

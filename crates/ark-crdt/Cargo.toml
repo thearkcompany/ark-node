@@ -5,5 +5,11 @@ edition = "2021"
 
 [dependencies]
 ark-core = { path = "../ark-core" }
+ark-storage = { path = "../ark-storage" }
 sha3 = "0.10"
 hex = "0.4"
+thiserror = "1.0"
+
+[dev-dependencies]
+tempfile = "3.27"
+
