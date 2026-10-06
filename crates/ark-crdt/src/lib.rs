@@ -2,7 +2,7 @@
 
 pub mod mst;
 
-pub use mst::{compute_key_level, MerkleSearchTree, MstEntry, MstNode};
+pub use mst::{compute_key_level, MerkleSearchTree, MstEntry, MstNode, MstPutOutcome, MstValue};
 
 pub struct MultiValueRegister<T> {
     pub value: T,

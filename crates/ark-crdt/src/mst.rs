@@ -3,9 +3,11 @@
 //! Conforms to GCP-09 / ADR-0009:
 //! - Deterministic key level derivation: floor(ctz(SHA3-256(key)) / 4)
 //! - Fanout b = 16 (4-bit zero nibbles)
-//! - Node representation: ordered entries (key, envelope_id, timestamp) interleaved with child hashes
+//! - Node representation: ordered entries (key, envelope_id, timestamp, is_tombstone) interleaved with child hashes
 //! - Canonical node hash calculation using SHA3-256
 //! - Order-invariant deterministic root hash
+//! - Bivariate LWW conflict resolution: max(timestamp) || max(id)
+//! - Tombstone envelope markers and deleted point queries
 
 use sha3::{Digest, Sha3_256};
 use std::sync::Arc;
@@ -28,12 +30,40 @@ pub fn compute_key_level(key: &[u8]) -> u32 {
     trailing_zeros / 4
 }
 
+/// Outcome of attempting to insert or update an entry in the MST under Bivariate LWW.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MstPutOutcome {
+    /// Entry was inserted as a completely new key.
+    Inserted,
+    /// Entry superseded an existing entry via Bivariate LWW: newer timestamp or higher envelope ID tie-breaker.
+    Updated,
+    /// Entry was rejected because an existing entry has a newer timestamp or higher envelope ID tie-breaker.
+    /// Tree root hash and entries remain unchanged.
+    SupersededLww,
+}
+
+/// Point query result returned by MST `get`, containing envelope identity, timestamp, and tombstone state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MstValue {
+    pub envelope_id: [u8; 32],
+    pub timestamp: u64,
+    pub is_tombstone: bool,
+}
+
+impl MstValue {
+    /// Returns true if this entry represents a deletion tombstone.
+    pub fn is_deleted(&self) -> bool {
+        self.is_tombstone
+    }
+}
+
 /// An entry stored within an MST node.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MstEntry {
     pub key: Vec<u8>,
     pub envelope_id: [u8; 32],
     pub timestamp: u64,
+    pub is_tombstone: bool,
 }
 
 impl MstEntry {
@@ -42,6 +72,16 @@ impl MstEntry {
             key,
             envelope_id,
             timestamp,
+            is_tombstone: false,
+        }
+    }
+
+    pub fn with_tombstone(key: Vec<u8>, envelope_id: [u8; 32], timestamp: u64, is_tombstone: bool) -> Self {
+        Self {
+            key,
+            envelope_id,
+            timestamp,
+            is_tombstone,
         }
     }
 }
@@ -79,11 +119,7 @@ impl MstNode {
         for (i, entry) in self.entries.iter().enumerate() {
             // Child hash before this entry
             let child_hash = match &self.children[i] {
-                Some(child) => {
-                    // Note: child might need its hash computed
-                    // Since child is Arc<MstNode>, we assume immutable/precomputed or clone-on-write
-                    child.cached_hash.unwrap_or([0u8; 32])
-                }
+                Some(child) => child.cached_hash.unwrap_or([0u8; 32]),
                 None => [0u8; 32],
             };
             hasher.update(child_hash);
@@ -93,6 +129,7 @@ impl MstNode {
             hasher.update(&entry.key);
             hasher.update(entry.envelope_id);
             hasher.update(entry.timestamp.to_be_bytes());
+            hasher.update([if entry.is_tombstone { 1u8 } else { 0u8 }]);
         }
 
         // Child hash after the last entry
@@ -150,25 +187,52 @@ impl MerkleSearchTree {
         self.root.as_ref()
     }
 
-    pub fn get(&self, key: &[u8]) -> Option<([u8; 32], u64)> {
+    /// Point query for a key. Returns `Some(MstValue)` if an entry (live or tombstone) is present.
+    pub fn get(&self, key: &[u8]) -> Option<MstValue> {
         let mut curr = self.root.as_ref()?;
         loop {
-            // Binary search or linear scan over entries
             match curr.entries.binary_search_by(|e| e.key.as_slice().cmp(key)) {
                 Ok(idx) => {
-                    return Some((curr.entries[idx].envelope_id, curr.entries[idx].timestamp));
+                    let entry = &curr.entries[idx];
+                    return Some(MstValue {
+                        envelope_id: entry.envelope_id,
+                        timestamp: entry.timestamp,
+                        is_tombstone: entry.is_tombstone,
+                    });
                 }
                 Err(idx) => {
-                    // idx is the child slot
                     curr = curr.children[idx].as_ref()?;
                 }
             }
         }
     }
 
-    pub fn insert(&mut self, key: Vec<u8>, envelope_id: [u8; 32], timestamp: u64) -> Option<([u8; 32], u64)> {
+    /// Inserts an entry into the Merkle Search Tree using Bivariate LWW resolution:
+    /// `max(timestamp) || max(envelope_id)`.
+    ///
+    /// - If the key does not exist, it is inserted and `MstPutOutcome::Inserted` is returned.
+    /// - If the key exists:
+    ///   - If `(new_ts > old_ts) || (new_ts == old_ts && new_id > old_id)`, the entry is updated
+    ///     in-place and `MstPutOutcome::Updated` is returned.
+    ///   - Otherwise, the write is obsolete; tree is unaltered and `MstPutOutcome::SupersededLww` is returned.
+    pub fn insert(
+        &mut self,
+        key: Vec<u8>,
+        envelope_id: [u8; 32],
+        timestamp: u64,
+        is_tombstone: bool,
+    ) -> MstPutOutcome {
+        // First check existing entry to apply Bivariate LWW
+        if let Some(existing) = self.get(&key) {
+            let wins = (timestamp > existing.timestamp)
+                || (timestamp == existing.timestamp && envelope_id > existing.envelope_id);
+            if !wins {
+                return MstPutOutcome::SupersededLww;
+            }
+        }
+
         let key_level = compute_key_level(&key);
-        let entry = MstEntry::new(key, envelope_id, timestamp);
+        let entry = MstEntry::with_tombstone(key, envelope_id, timestamp, is_tombstone);
 
         let mut replaced = None;
         let new_root = Self::insert_node(self.root.take(), entry, key_level, &mut replaced);
@@ -176,11 +240,14 @@ impl MerkleSearchTree {
 
         if replaced.is_none() {
             self.len += 1;
+            MstPutOutcome::Inserted
+        } else {
+            MstPutOutcome::Updated
         }
-
-        replaced
     }
 
+    /// Removes a key completely from the tree structure (e.g. for hard compaction/eviction).
+    /// For soft deletions that replicate across nodes, use `insert(..., is_tombstone: true)` instead.
     pub fn delete(&mut self, key: &[u8]) -> Option<([u8; 32], u64)> {
         let root = self.root.take()?;
         let mut removed = None;
@@ -207,8 +274,6 @@ impl MerkleSearchTree {
                 let old = (node.entries[idx].envelope_id, node.entries[idx].timestamp);
                 *removed = Some(old);
 
-                // Entry is found in this node.
-                // We must merge its left child and right child!
                 let left_child = node.children[idx].take();
                 let right_child = node.children.remove(idx + 1);
                 let merged_child = Self::merge_children(left_child, right_child);
@@ -219,7 +284,6 @@ impl MerkleSearchTree {
                 Self::clean_node(node.level, node.entries, node.children)
             }
             Err(idx) => {
-                // Key would be in child at idx
                 if let Some(child) = &node_arc.children[idx] {
                     let updated_child = Self::delete_node(child.clone(), key, removed);
                     if removed.is_some() {
@@ -231,7 +295,6 @@ impl MerkleSearchTree {
                         Some(node_arc)
                     }
                 } else {
-                    // Key not present in this subtree
                     Some(node_arc)
                 }
             }
@@ -261,9 +324,6 @@ impl MerkleSearchTree {
                     right.children[0] = Self::merge_children(Some(Arc::new(left)), first_child);
                     Self::clean_node(right.level, right.entries, right.children)
                 } else {
-                    // left.level == right.level
-                    // They were split from the same level or are sibling nodes at the same level!
-                    // Merge entries and middle children
                     let mid_left = left.children.pop().unwrap_or(None);
                     let mid_right = right.children.remove(0);
                     let merged_mid = Self::merge_children(mid_left, mid_right);
@@ -289,10 +349,9 @@ impl MerkleSearchTree {
     ) -> Arc<MstNode> {
         match node_opt {
             None => {
-                // If inserting into empty slot at entry_level
                 let mut node = MstNode::new(entry_level);
                 node.entries.push(entry);
-                node.children.push(None); // now children has 2 slots: [None, None]
+                node.children.push(None); // [None, None]
                 node.hash();
                 Arc::new(node)
             }
@@ -301,7 +360,6 @@ impl MerkleSearchTree {
                 node.cached_hash = None; // invalidate hash
 
                 if entry_level == node.level {
-                    // Insert directly into this node
                     match node.entries.binary_search_by(|e| e.key.as_slice().cmp(&entry.key)) {
                         Ok(idx) => {
                             let old = (node.entries[idx].envelope_id, node.entries[idx].timestamp);
@@ -309,7 +367,6 @@ impl MerkleSearchTree {
                             node.entries[idx] = entry;
                         }
                         Err(idx) => {
-                            // Split child at idx around entry.key if child exists
                             let (left_child, right_child) = if let Some(child) = node.children[idx].take() {
                                 Self::split_child(child, &entry.key)
                             } else {
@@ -324,10 +381,8 @@ impl MerkleSearchTree {
                     node.hash();
                     Arc::new(node)
                 } else if entry_level < node.level {
-                    // Descend to child
                     match node.entries.binary_search_by(|e| e.key.as_slice().cmp(&entry.key)) {
                         Ok(idx) => {
-                            // Key already exists at higher level! Replace it directly here
                             let old = (node.entries[idx].envelope_id, node.entries[idx].timestamp);
                             *replaced = Some(old);
                             node.entries[idx] = entry;
@@ -343,9 +398,6 @@ impl MerkleSearchTree {
                         }
                     }
                 } else {
-                    // entry_level > node.level
-                    // The new entry is higher level than current root/node!
-                    // Split the current node around entry.key into (left, right)
                     let (left_child, right_child) = Self::split_child(Arc::new(node), &entry.key);
                     let mut parent = MstNode::new(entry_level);
                     parent.entries.push(entry);
@@ -367,9 +419,6 @@ impl MerkleSearchTree {
             Err(i) => i,
         };
 
-        // All entries < idx belong to left
-        // If idx matches an entry equal to split_key, it shouldn't normally happen during split unless replacing,
-        // but if it does, entry at idx is removed/handled.
         let mut left_entries = Vec::new();
         let mut left_children = Vec::new();
         for i in 0..idx {
@@ -377,7 +426,6 @@ impl MerkleSearchTree {
             left_children.push(node.children[i].clone());
         }
 
-        // Child at idx spans across split_key
         let (mid_left, mid_right) = if let Some(child_at_idx) = &node.children[idx] {
             Self::split_child(child_at_idx.clone(), split_key)
         } else {
@@ -412,10 +460,7 @@ impl MerkleSearchTree {
         children: Vec<Option<Arc<MstNode>>>,
     ) -> Option<Arc<MstNode>> {
         if entries.is_empty() {
-            // If entries is empty, check if there is a child (there is at most 1 child slot)
             if children.iter().any(|c| c.is_some()) {
-                // If only a single child exists, collapse if possible or return that child
-                // In MST, a node with 0 entries and 1 child can just collapse to the child!
                 return children.into_iter().flatten().next();
             }
             return None;
