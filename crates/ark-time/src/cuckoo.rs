@@ -21,8 +21,16 @@ impl DualCuckooAntiReplay {
         Self::with_capacity(DEFAULT_CAPACITY)
     }
 
-    /// Initialize with a custom capacity (number of items).
+    /// Initialize with a custom capacity (number of items), capped strictly to <= 24 MB total RAM.
     pub fn with_capacity(capacity: usize) -> Self {
+        let bucket_count = std::cmp::max(1, capacity.next_power_of_two() / 4);
+        let total_bytes = bucket_count * 4 * 2;
+        assert!(
+            total_bytes <= 24 * 1024 * 1024,
+            "DualCuckooAntiReplay capacity exceeds 24 MB ceiling (estimated: {} bytes)",
+            total_bytes
+        );
+
         Self {
             capacity,
             current: RwLock::new(CuckooFilter::with_capacity(capacity)),
