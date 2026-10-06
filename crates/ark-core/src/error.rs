@@ -25,6 +25,9 @@ pub enum ArkError {
     #[error("Replay attack detected: duplicate packet or sequence expired")]
     ReplayDetected,
 
+    #[error("Replay filter memory capacity saturated (<= 24 MB reached): dropping packet")]
+    ReplayFilterFull,
+
     #[error("Clock drift too large: peer delta {0}s exceeds limit ±{1}s")]
     ClockDriftExceeded(i64, i64),
 
@@ -36,6 +39,9 @@ pub enum ArkError {
 
     #[error("Protobuf serialization/deserialization failure: {0}")]
     SerializationError(String),
+
+    #[error("Wire frame buffer too short: length {0} < 64 bytes")]
+    FrameTooShort(usize),
 
     #[error("Network I/O error: {0}")]
     IoError(#[from] std::io::Error),
