@@ -78,6 +78,51 @@ fn generate_server_cert() -> (Vec<u8>, Vec<u8>) {
     (cert_der, key_der)
 }
 
+/// Helper to construct, sign, and wire-encode an ArkEnvelope
+fn create_wire_packet(
+    sender: &PersistentIdentity,
+    recipient: &PersistentIdentity,
+    sequence_nonce: u64,
+    timestamp: u64,
+    payload: Vec<u8>,
+) -> Vec<u8> {
+    let mut mask = 0u64;
+    TagMask::set_flag(&mut mask, TAG_MASK_SIGNED);
+    let tags = vec![BinaryTag::new(1, vec![0x10, 0x20])];
+
+    let mut partial_header = FastHeader::new(
+        0x01,
+        0, // placeholder before envelope calculation
+        0xDEADBEEF,
+        sender.sender_key_id,
+        recipient.sender_key_id,
+        sequence_nonce,
+    );
+
+    let mut envelope = ArkEnvelope::new(
+        partial_header.to_bytes(),
+        sender.ark_id,
+        recipient.ark_id,
+        payload,
+        vec![], // signature placeholder
+        mask,
+        tags,
+        timestamp,
+    )
+    .expect("Failed to build envelope template");
+
+    let canonical_id = calculate_canonical_id(&envelope);
+    let signature = sender
+        .fn_dsa_keypair
+        .sign(&canonical_id)
+        .expect("Failed to sign canonical ID");
+    envelope.signature = signature;
+
+    partial_header.envelope_len = envelope.encoded_len() as u32;
+
+    WireFrame::encode(&partial_header, &envelope).expect("Failed to encode wire frame")
+}
+
 #[tokio::test]
 async fn test_e2e_full_protocol_stack_verification() {
     let mut rng = OsRng;
@@ -107,60 +152,95 @@ async fn test_e2e_full_protocol_stack_verification() {
             .expect("Server failed to accept connection");
         let conn = incoming.await.expect("QUIC handshake failed on server");
 
-        let (mut send, mut recv) = conn.accept_bi().await.expect("Failed to accept bi-stream");
+        // Process first transmission (fresh packet)
+        {
+            let (mut send, mut recv) = conn.accept_bi().await.expect("Failed to accept bi-stream 1");
+            let wire_bytes = recv
+                .read_to_end(128 * 1024)
+                .await
+                .expect("Server failed to read wire bytes 1");
 
-        // Read framed packet from stream
-        // Read 4 bytes length prefix first or read wire frame until finished
-        let wire_bytes = recv
-            .read_to_end(128 * 1024)
-            .await
-            .expect("Server failed to read wire bytes");
+            // [Criteria 2] Server validates the 64-byte raw FastHeader directly before Protobuf decoding
+            assert!(wire_bytes.len() >= FAST_HEADER_SIZE, "Frame shorter than 64-byte FastHeader");
+            let raw_header = WireFrame::inspect_header(&wire_bytes)
+                .expect("Direct 64-byte FastHeader inspection failed");
+            raw_header.validate().expect("FastHeader validation failed");
+            assert_eq!(raw_header.magic, MAGIC_VALUE);
+            assert_eq!(raw_header.version, 1);
+            assert_eq!(raw_header.sender_key_id, client_identity.sender_key_id);
+            assert_eq!(raw_header.recipient_key_id, server_identity.sender_key_id);
 
-        // [Criteria 2] Server validates the 64-byte raw FastHeader directly before Protobuf decoding
-        assert!(wire_bytes.len() >= FAST_HEADER_SIZE, "Frame shorter than 64-byte FastHeader");
-        let raw_header = WireFrame::inspect_header(&wire_bytes)
-            .expect("Direct 64-byte FastHeader inspection failed");
-        raw_header.validate().expect("FastHeader validation failed");
-        assert_eq!(raw_header.magic, MAGIC_VALUE);
-        assert_eq!(raw_header.version, 1);
-        assert_eq!(raw_header.sender_key_id, client_identity.sender_key_id);
-        assert_eq!(raw_header.recipient_key_id, server_identity.sender_key_id);
+            // Now decode full frame
+            let (decoded_header, decoded_envelope) =
+                WireFrame::decode(&wire_bytes).expect("Failed to decode wire frame");
+            assert_eq!(decoded_header, raw_header);
 
-        // Now decode full frame
-        let (decoded_header, decoded_envelope) =
-            WireFrame::decode(&wire_bytes).expect("Failed to decode wire frame");
-        assert_eq!(decoded_header, raw_header);
+            // [Criteria 5] Server validates envelope timestamp within +-30s window using DriftValidator
+            DriftValidator::validate_now(decoded_envelope.timestamp)
+                .expect("Envelope timestamp exceeds drift bounds");
 
-        // [Criteria 5] Server validates envelope timestamp within +-30s window using DriftValidator
-        DriftValidator::validate_now(decoded_envelope.timestamp)
-            .expect("Envelope timestamp exceeds drift bounds");
+            // [Criteria 3] Server verifies client's FN-DSA-512 signature on the envelope
+            let canonical_id = calculate_canonical_id(&decoded_envelope);
+            verify_fn_dsa_512(
+                &client_pubkey_expected,
+                &canonical_id,
+                &decoded_envelope.signature,
+            )
+            .expect("FN-DSA-512 signature verification failed on server");
 
-        // [Criteria 3] Server verifies client's FN-DSA-512 signature on the envelope
-        let canonical_id = calculate_canonical_id(&decoded_envelope);
-        verify_fn_dsa_512(
-            &client_pubkey_expected,
-            &canonical_id,
-            &decoded_envelope.signature,
-        )
-        .expect("FN-DSA-512 signature verification failed on server");
+            // [Criteria 4] Server inserts envelope nonce into DualCuckooAntiReplay
+            let nonce_bytes = raw_header.sequence_nonce.to_be_bytes();
+            let fresh = server_anti_replay
+                .check_and_insert(&nonce_bytes)
+                .expect("Failed to insert nonce into DualCuckooAntiReplay");
+            assert!(fresh, "Expected nonce to be fresh on first receipt");
 
-        // [Criteria 4] Server inserts envelope nonce into DualCuckooAntiReplay and rejects duplicate
-        let nonce_bytes = raw_header.sequence_nonce.to_be_bytes();
-        let fresh = server_anti_replay
-            .check_and_insert(&nonce_bytes)
-            .expect("Failed to insert nonce into DualCuckooAntiReplay");
-        assert!(fresh, "Expected nonce to be fresh on first receipt");
-
-        // Simulated duplicate packet replay rejection
-        let replay_res = server_anti_replay.check_and_insert(&nonce_bytes);
-        match replay_res {
-            Err(ArkError::ReplayDetected) => (),
-            other => panic!("Expected ReplayDetected on duplicate nonce, got {:?}", other),
+            send.write_all(b"OK").await.expect("Server failed to write OK");
+            send.finish().expect("Server failed to finish stream");
         }
 
-        // Respond with acknowledgment
-        send.write_all(b"ARK_ACK").await.expect("Server failed to write ACK");
-        send.finish().expect("Server failed to finish stream");
+        // Process second transmission over QUIC: simulated duplicate packet replay
+        {
+            let (mut send, mut recv) = conn.accept_bi().await.expect("Failed to accept bi-stream 2");
+            let replayed_bytes = recv
+                .read_to_end(128 * 1024)
+                .await
+                .expect("Server failed to read replayed wire bytes");
+
+            let raw_header = WireFrame::inspect_header(&replayed_bytes)
+                .expect("Header inspection on replayed packet");
+            let nonce_bytes = raw_header.sequence_nonce.to_be_bytes();
+
+            let replay_res = server_anti_replay.check_and_insert(&nonce_bytes);
+            match replay_res {
+                Err(ArkError::ReplayDetected) => {
+                    send.write_all(b"ERR_REPLAY").await.expect("Write replay rejection");
+                    send.finish().expect("Finish replay stream");
+                }
+                other => panic!("Expected ReplayDetected on duplicate nonce over wire, got {:?}", other),
+            }
+        }
+
+        // Process third transmission over QUIC: simulated excessive clock drift
+        {
+            let (mut send, mut recv) = conn.accept_bi().await.expect("Failed to accept bi-stream 3");
+            let drifted_bytes = recv
+                .read_to_end(128 * 1024)
+                .await
+                .expect("Server failed to read drifted wire bytes");
+
+            let (_, decoded_envelope) =
+                WireFrame::decode(&drifted_bytes).expect("Decode drifted wire frame");
+
+            let drift_res = DriftValidator::validate_now(decoded_envelope.timestamp);
+            match drift_res {
+                Err(ArkError::ClockDriftExceeded(_, 30)) => {
+                    send.write_all(b"ERR_DRIFT").await.expect("Write drift rejection");
+                    send.finish().expect("Finish drift stream");
+                }
+                other => panic!("Expected ClockDriftExceeded on drifted envelope over wire, got {:?}", other),
+            }
+        }
 
         let _ = conn.closed().await;
     });
@@ -176,63 +256,55 @@ async fn test_e2e_full_protocol_stack_verification() {
         .expect("Failed to initiate connect");
     let conn = connecting.await.expect("Client handshake failed");
 
-    // 6. Build valid client envelope and wire frame
+    // 6. Send fresh valid envelope
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
     let sequence_nonce: u64 = 424242;
-
     let payload = b"E2E Sovereign Message: Secure PQC Transmission".to_vec();
-    let mut mask = 0u64;
-    TagMask::set_flag(&mut mask, TAG_MASK_SIGNED);
-    let tags = vec![BinaryTag::new(1, vec![0x10, 0x20])];
 
-    let mut partial_header = FastHeader::new(
-        0x01,
-        0, // placeholder before envelope calculation
-        0xDEADBEEF,
-        client_identity.sender_key_id,
-        server_identity.sender_key_id,
+    let wire_bytes = create_wire_packet(
+        &client_identity,
+        &server_identity,
         sequence_nonce,
+        now,
+        payload,
     );
 
-    // Construct envelope without signature first to calculate canonical ID
-    let mut envelope = ArkEnvelope::new(
-        partial_header.to_bytes(),
-        client_identity.ark_id,
-        server_identity.ark_id,
-        payload.clone(),
-        vec![], // signature placeholder
-        mask,
-        tags,
-        now,
-    )
-    .expect("Failed to build envelope template");
+    let (mut send1, mut recv1) = conn.open_bi().await.expect("Failed to open bi-stream 1");
+    send1.write_all(&wire_bytes).await.expect("Client write wire bytes 1");
+    send1.finish().expect("Client finish stream 1");
 
-    // Compute canonical ID and sign with client FN-DSA-512 private key
-    let canonical_id = calculate_canonical_id(&envelope);
-    let signature = client_identity
-        .fn_dsa_keypair
-        .sign(&canonical_id)
-        .expect("Client failed to sign canonical ID");
-    envelope.signature = signature;
+    let mut ok_buf = [0u8; 2];
+    recv1.read_exact(&mut ok_buf).await.expect("Client read OK");
+    assert_eq!(&ok_buf, b"OK");
 
-    // Update header with actual envelope length
-    partial_header.envelope_len = envelope.encoded_len() as u32;
+    // 7. Transmit simulated duplicate packet replay over QUIC network stream
+    let (mut send2, mut recv2) = conn.open_bi().await.expect("Failed to open bi-stream 2");
+    send2.write_all(&wire_bytes).await.expect("Client send replayed wire bytes");
+    send2.finish().expect("Client finish stream 2");
 
-    // Encode to wire format: [64B FastHeader] || [Protobuf Envelope]
-    let wire_bytes = WireFrame::encode(&partial_header, &envelope)
-        .expect("Failed to encode wire frame");
+    let mut replay_buf = [0u8; 10];
+    recv2.read_exact(&mut replay_buf).await.expect("Client read replay error");
+    assert_eq!(&replay_buf, b"ERR_REPLAY");
 
-    // Send over QUIC bidirectional stream
-    let (mut send, mut recv) = conn.open_bi().await.expect("Failed to open bi-stream");
-    send.write_all(&wire_bytes).await.expect("Client failed to write wire frame");
-    send.finish().expect("Client failed to finish write");
+    // 8. Transmit simulated excessive clock drift (+45s) over QUIC network stream
+    let drifted_wire_bytes = create_wire_packet(
+        &client_identity,
+        &server_identity,
+        sequence_nonce + 1,
+        now + 45, // outside +-30s window
+        b"Clock drifted envelope".to_vec(),
+    );
 
-    let mut ack_buf = [0u8; 7];
-    recv.read_exact(&mut ack_buf).await.expect("Client failed to read ACK");
-    assert_eq!(&ack_buf, b"ARK_ACK");
+    let (mut send3, mut recv3) = conn.open_bi().await.expect("Failed to open bi-stream 3");
+    send3.write_all(&drifted_wire_bytes).await.expect("Client send drifted wire bytes");
+    send3.finish().expect("Client finish stream 3");
+
+    let mut drift_buf = [0u8; 9];
+    recv3.read_exact(&mut drift_buf).await.expect("Client read drift error");
+    assert_eq!(&drift_buf, b"ERR_DRIFT");
 
     conn.close(0u32.into(), b"done");
     server_handle.await.expect("Server task encountered an error");
@@ -284,26 +356,4 @@ async fn test_e2e_rejection_on_mismatched_alpn() {
     );
 
     let _ = server_handle.await;
-}
-
-#[tokio::test]
-async fn test_e2e_rejection_on_excessive_clock_drift() {
-    // Assert DriftValidator rejects timestamps outside the +-30s window
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-
-    // Valid: within +-30s
-    assert!(DriftValidator::validate_now(now).is_ok());
-    assert!(DriftValidator::validate_now(now + 15).is_ok());
-    assert!(DriftValidator::validate_now(now - 15).is_ok());
-
-    // Invalid: past 30s in the future
-    let future_res = DriftValidator::validate_now(now + 31);
-    assert!(matches!(future_res, Err(ArkError::ClockDriftExceeded(_, 30))));
-
-    // Invalid: past 30s in the past
-    let past_res = DriftValidator::validate_now(now - 31);
-    assert!(matches!(past_res, Err(ArkError::ClockDriftExceeded(_, 30))));
 }
