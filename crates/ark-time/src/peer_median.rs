@@ -31,7 +31,7 @@ impl PeerMedianTime {
         offsets.sort_unstable();
 
         let mid = offsets.len() / 2;
-        if offsets.len() % 2 == 0 {
+        if offsets.len().is_multiple_of(2) {
             (offsets[mid - 1] + offsets[mid]) / 2
         } else {
             offsets[mid]
