@@ -57,7 +57,17 @@ impl ArkQuicEndpoint {
 
         Ok(Self { endpoint })
     }
+
+    /// Creates a QUIC server endpoint with an auto-generated self-signed certificate
+    pub fn new_server_self_signed(bind_addr: SocketAddr) -> Result<Self> {
+        let rcgen_cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])
+            .map_err(|e| ArkError::CryptoError(e.to_string()))?;
+        let cert_der = rcgen_cert.cert.der().to_vec();
+        let key_der = rcgen_cert.key_pair.serialize_der();
+        Self::new_server(bind_addr, cert_der, key_der)
+    }
 }
+
 
 /// Verification helper for P2P identity handshake
 #[derive(Debug)]
