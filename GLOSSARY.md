@@ -61,3 +61,17 @@ A storage indexing strategy (Retention Class 3) where envelopes retain only the 
 ### Bivariate LWW (Last-Write-Wins)
 A conflict-resolution rule applied to replaceable storage entries and headless nodes that deterministically orders competing envelopes by `(timestamp, envelope_id)`. The highest timestamp wins, and exact timestamp collisions are resolved by lexicographical comparison of the 32-byte cryptographic envelope digest.
 
+## Distributed Consistency & CRDT (GCP-09)
+
+### Merkle Search Tree (MST)
+A probabilistically balanced search tree with average fan-out $b = 16$ whose node levels are determined deterministically by counting trailing zero nibbles in `SHA3-256(key)`. Identical sets of key-value pairs always produce the identical 32-byte root digest regardless of mutation or insertion order.
+
+### Multi-Value Register (MVR)
+A conflict-free replicated data type (CRDT) register that captures concurrent mutations from divergent network partitions. In headless server nodes, concurrent versions collapse deterministically via `MERGE_POLICY_LWW_BIVARIATE` to eliminate unbounded sibling multiplication.
+
+### Delta Reconciliation
+An asynchronous tree-diffing protocol over QUIC streams (`KIND_KV_MST_SYNC`) executing in $\mathcal{O}(\Delta \log n)$ round-trips. Peers compare MST root hashes and descend into divergent subtrees to exchange only missing or superseded envelopes.
+
+### Tombstone Envelope
+A cryptographically signed `ArkEnvelope` carrying a deletion marker and recent timestamp, treated as an active entry in the MST to deterministically supersede earlier versions across peer nodes until expired by garbage collection.
+
