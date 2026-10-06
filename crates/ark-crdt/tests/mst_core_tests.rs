@@ -1,4 +1,4 @@
-use ark_crdt::mst::{compute_key_level, MerkleSearchTree};
+use ark_crdt::mst::{compute_key_level, MerkleSearchTree, MstPutOutcome, MstValue};
 use sha3::Digest;
 
 #[test]
@@ -46,20 +46,34 @@ fn test_insert_and_get() {
 
     assert!(tree.get(&key).is_none());
 
-    let old = tree.insert(key.clone(), env_id, timestamp);
-    assert!(old.is_none());
+    let outcome1 = tree.insert(key.clone(), env_id, timestamp, false);
+    assert_eq!(outcome1, MstPutOutcome::Inserted);
     assert_eq!(tree.len(), 1);
 
     let found = tree.get(&key);
-    assert_eq!(found, Some((env_id, timestamp)));
+    assert_eq!(
+        found,
+        Some(MstValue {
+            envelope_id: env_id,
+            timestamp,
+            is_tombstone: false,
+        })
+    );
 
     // Re-insert with new timestamp and envelope_id
     let new_env_id = [99u8; 32];
     let new_timestamp = 1700000500;
-    let replaced = tree.insert(key.clone(), new_env_id, new_timestamp);
-    assert_eq!(replaced, Some((env_id, timestamp)));
+    let outcome2 = tree.insert(key.clone(), new_env_id, new_timestamp, false);
+    assert_eq!(outcome2, MstPutOutcome::Updated);
     assert_eq!(tree.len(), 1);
-    assert_eq!(tree.get(&key), Some((new_env_id, new_timestamp)));
+    assert_eq!(
+        tree.get(&key),
+        Some(MstValue {
+            envelope_id: new_env_id,
+            timestamp: new_timestamp,
+            is_tombstone: false,
+        })
+    );
 }
 
 #[test]
@@ -74,13 +88,13 @@ fn test_order_invariance_deterministic_root() {
 
     let mut tree1 = MerkleSearchTree::new();
     for (k, e, t) in &pairs {
-        tree1.insert(k.clone(), *e, *t);
+        tree1.insert(k.clone(), *e, *t, false);
     }
 
     // Insert in reverse order
     let mut tree2 = MerkleSearchTree::new();
     for (k, e, t) in pairs.iter().rev() {
-        tree2.insert(k.clone(), *e, *t);
+        tree2.insert(k.clone(), *e, *t, false);
     }
 
     // Insert in permuted / pseudo-random order
@@ -94,7 +108,7 @@ fn test_order_invariance_deterministic_root() {
 
     let mut tree3 = MerkleSearchTree::new();
     for (k, e, t) in &permuted {
-        tree3.insert(k.clone(), *e, *t);
+        tree3.insert(k.clone(), *e, *t, false);
     }
 
     assert_ne!(tree1.root_hash(), [0u8; 32]);
@@ -115,7 +129,7 @@ fn test_delete_updates_tree_and_matches_uninserted_tree() {
     // Tree with all 30 items
     let mut tree_with_all = MerkleSearchTree::new();
     for (k, e, t) in &pairs {
-        tree_with_all.insert(k.clone(), *e, *t);
+        tree_with_all.insert(k.clone(), *e, *t, false);
     }
 
     // Delete item 10, item 0, item 29
@@ -136,7 +150,7 @@ fn test_delete_updates_tree_and_matches_uninserted_tree() {
     let mut tree_without_deleted = MerkleSearchTree::new();
     for (k, e, t) in &pairs {
         if !keys_to_delete.contains(k) {
-            tree_without_deleted.insert(k.clone(), *e, *t);
+            tree_without_deleted.insert(k.clone(), *e, *t, false);
         }
     }
     assert_eq!(tree_without_deleted.len(), 27);
@@ -163,7 +177,7 @@ fn test_tree_balance_and_height_under_randomized_keys() {
         let key = format!("sovereign/peer/record/{:08x}", i * 1337 + 7).into_bytes();
         let env_id = [(i as u8); 32];
         let timestamp = 1700000000 + i as u64;
-        tree.insert(key, env_id, timestamp);
+        tree.insert(key, env_id, timestamp, false);
     }
 
     assert_eq!(tree.len(), num_keys);
