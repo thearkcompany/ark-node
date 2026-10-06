@@ -6,14 +6,27 @@ use std::time::{Duration, Instant};
 
 /// Pings a target peer via QUIC endpoint locked strictly to ALPN "ark-pqc/v1"
 pub async fn ping_peer(target: &str) -> anyhow::Result<Duration> {
-    let target_addr: SocketAddr = if let Ok(addr) = target.parse::<SocketAddr>() {
+    let target_formatted = if !target.contains(':') {
+        format!("{}:8443", target)
+    } else {
+        target.to_string()
+    };
+
+    let target_addr: SocketAddr = if let Ok(addr) = target_formatted.parse::<SocketAddr>() {
         addr
     } else {
-        // Attempt resolving if hostname:port provided
-        tokio::net::lookup_host(target)
+        tokio::net::lookup_host(&target_formatted)
             .await?
             .next()
-            .ok_or_else(|| anyhow::anyhow!("Failed to resolve target: {}", target))?
+            .ok_or_else(|| anyhow::anyhow!("Failed to resolve target: {}", target_formatted))?
+    };
+
+    let sni_hostname = if let Ok(addr) = target.parse::<SocketAddr>() {
+        addr.ip().to_string()
+    } else if let Some((host, _)) = target.split_once(':') {
+        host.to_string()
+    } else {
+        target.to_string()
     };
 
     let bind_addr: SocketAddr = if target_addr.is_ipv6() {
@@ -27,8 +40,7 @@ pub async fn ping_peer(target: &str) -> anyhow::Result<Duration> {
 
     let start = Instant::now();
 
-    // Use target hostname if possible, otherwise default to "localhost" for SNI
-    let connecting = client.endpoint.connect(target_addr, "localhost")
+    let connecting = client.endpoint.connect(target_addr, &sni_hostname)
         .map_err(|e| anyhow::anyhow!("Failed to initiate connect to {}: {}", target_addr, e))?;
 
     let conn = tokio::time::timeout(Duration::from_secs(5), connecting)
