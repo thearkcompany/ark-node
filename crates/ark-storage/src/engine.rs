@@ -484,6 +484,18 @@ impl StorageEngine {
         self.db.keyspace_count()
     }
 
+    /// Access or create a custom/dedicated keyspace in the underlying database.
+    pub fn open_keyspace(&self, name: &str) -> Result<Keyspace> {
+        self.db
+            .keyspace(name, KeyspaceCreateOptions::default)
+            .map_err(|e| ArkStorageError::Database(e.to_string()))
+    }
+
+    /// Underlying database reference.
+    pub fn database(&self) -> &Database {
+        &self.db
+    }
+
     /// Spawns a background worker thread that periodically invokes `sweep_expired`.
     pub fn spawn_background_sweeper(
         engine: std::sync::Arc<Self>,
