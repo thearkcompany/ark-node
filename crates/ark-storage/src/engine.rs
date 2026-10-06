@@ -22,6 +22,10 @@ pub struct StorageEngine {
 }
 
 impl StorageEngine {
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
     pub fn open<P: AsRef<Path>>(path: P, config: StorageConfig) -> Result<Self> {
         let path_buf = path.as_ref().to_path_buf();
         std::fs::create_dir_all(&path_buf)?;
