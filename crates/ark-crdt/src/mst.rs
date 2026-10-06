@@ -316,6 +316,11 @@ impl MerkleSearchTree {
         self.root.as_ref()
     }
 
+    /// Computes a minimal sync plan between this tree and a remote tree.
+    pub fn diff(&self, remote: &MerkleSearchTree) -> crate::diff::MstSyncPlan {
+        crate::diff::MstDiff::diff(self, remote)
+    }
+
     /// Point query for a key. Returns `Some(MstValue)` if an entry (live or tombstone) is present.
     pub fn get(&self, key: &[u8]) -> Option<MstValue> {
         let mut curr = self.root.as_ref()?;
@@ -541,7 +546,7 @@ impl MerkleSearchTree {
     /// Split a subtree `node` into two subtrees:
     /// - left subtree containing all keys < `split_key`
     /// - right subtree containing all keys > `split_key`
-    fn split_child(node_arc: Arc<MstNode>, split_key: &[u8]) -> (Option<Arc<MstNode>>, Option<Arc<MstNode>>) {
+    pub(crate) fn split_child(node_arc: Arc<MstNode>, split_key: &[u8]) -> (Option<Arc<MstNode>>, Option<Arc<MstNode>>) {
         let node = (*node_arc).clone();
         let idx = match node.entries.binary_search_by(|e| e.key.as_slice().cmp(split_key)) {
             Ok(i) => i,
