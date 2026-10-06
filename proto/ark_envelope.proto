@@ -42,3 +42,31 @@ message ArkNodeStatus {
   uint32 active_peers = 4;
   int64 peer_median_time = 5;
 }
+
+message MstSyncRequest {
+  string namespace = 1;
+  bytes root_hash = 2; // 32-byte SHA3-256 root digest
+  repeated bytes requested_node_hashes = 3; // List of 32-byte node hashes
+  bytes key_range_start = 4;
+  bytes key_range_end = 5;
+}
+
+message MstSyncResponse {
+  string namespace = 1;
+  bytes root_hash = 2;
+  repeated MstNodeWire nodes = 3;
+  repeated ArkEnvelope missing_envelopes = 4;
+}
+
+message MstNodeWire {
+  bytes node_hash = 1; // 32-byte SHA3-256 hash of this node
+  uint32 level = 2;
+  repeated MstEntryWire entries = 3;
+  repeated bytes child_hashes = 4; // Subtree child hashes
+}
+
+message MstEntryWire {
+  bytes key = 1;
+  bytes envelope_id = 2; // 32-byte SHA3-256 envelope id
+  uint64 timestamp = 3;
+}

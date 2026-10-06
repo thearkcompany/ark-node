@@ -5,6 +5,7 @@ pub mod engine;
 pub mod error;
 pub mod retention;
 
+pub use fjall::{Database, Keyspace};
 pub use config::StorageConfig;
 pub use engine::{compute_envelope_id, BackgroundSweeperHandle, StorageEngine};
 pub use error::{ArkStorageError, Result};
