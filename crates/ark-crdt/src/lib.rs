@@ -1,8 +1,8 @@
-//! [Preparação para v1.0] Merkle Search Trees e Multi-Value Registers.
+//! ark-crdt: Distributed Key-Value Consistency via Merkle Search Trees (MST) & Multi-Value Registers (MVR) (GCP-09).
 
-pub struct MerkleSearchTree {
-    // MST structure placeholder
-}
+pub mod mst;
+
+pub use mst::{compute_key_level, MerkleSearchTree, MstEntry, MstNode};
 
 pub struct MultiValueRegister<T> {
     pub value: T,
