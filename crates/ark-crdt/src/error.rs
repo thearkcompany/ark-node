@@ -22,6 +22,9 @@ pub enum ArkCrdtError {
 
     #[error("Depth limit exceeded: {0}")]
     DepthLimitExceeded(u32),
+
+    #[error("Validation error: {0}")]
+    ValidationError(String),
 }
 
 pub type Result<T> = std::result::Result<T, ArkCrdtError>;
