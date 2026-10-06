@@ -11,8 +11,8 @@ pub fn calculate_canonical_id(envelope: &ArkEnvelope) -> [u8; 32] {
     hasher.update(&envelope.sender_id);
     hasher.update(&envelope.recipient_id);
     hasher.update(&envelope.payload);
-    hasher.update(&envelope.core_tag_mask.to_be_bytes());
-    hasher.update(&envelope.timestamp.to_be_bytes());
+    hasher.update(envelope.core_tag_mask.to_be_bytes());
+    hasher.update(envelope.timestamp.to_be_bytes());
 
     let res = hasher.finalize();
     let mut id = [0u8; 32];

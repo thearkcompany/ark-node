@@ -168,7 +168,7 @@ fn test_tombstone_envelopes_supersede_older_data_and_signal_deleted() {
     let outcome_late = tree.insert(key.clone(), env_id_late, ts_late, false);
     assert_eq!(outcome_late, MstPutOutcome::SupersededLww);
     // Tombstone still in effect
-    assert_eq!(tree.get(&key).unwrap().is_tombstone, true);
+    assert!(tree.get(&key).unwrap().is_tombstone);
 
     // 4. Fresh write at t=3000 supersedes tombstone
     let env_id_resurrect = [8u8; 32];

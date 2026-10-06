@@ -56,7 +56,7 @@ impl RetryCookieManager {
         let addr_str = client_addr.to_string();
         let expected_tag = Kmac256::generate_cookie_tag(&self.secret_key, addr_str.as_bytes(), &ts_bytes);
 
-        if &cookie[8..40] != expected_tag {
+        if cookie[8..40] != expected_tag {
             return Err(ArkError::InvalidRetryCookie);
         }
 
