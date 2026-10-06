@@ -6,7 +6,8 @@ use sha3::{Digest, Sha3_256};
 use crate::config::StorageConfig;
 use crate::error::{ArkStorageError, Result};
 use crate::retention::{
-    classify_retention, get_envelope_kind, get_envelope_param_d, RetentionClass, RetentionOutcome,
+    classify_retention, get_envelope_expiration, get_envelope_kind, get_envelope_param_d,
+    RetentionClass, RetentionOutcome,
 };
 
 pub struct StorageEngine {
@@ -173,6 +174,26 @@ impl StorageEngine {
                     Ok(RetentionOutcome::Stored)
                 }
             }
+            RetentionClass::Class4BoundedTtl => {
+                let id = compute_envelope_id(envelope)?;
+                let expiration = get_envelope_expiration(envelope).unwrap_or(0);
+                let bytes = envelope
+                    .encode_to_vec()
+                    .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
+
+                // Store in class4_ttl indexed by id
+                self.class4_ttl
+                    .insert(id, bytes)
+                    .map_err(|e| ArkStorageError::Database(e.to_string()))?;
+
+                // Store in class4_index: [expiration_ts: 8B BE] || [id: 32B] -> empty
+                let index_key = make_class4_index_key(expiration, &id);
+                self.class4_index
+                    .insert(index_key, &[])
+                    .map_err(|e| ArkStorageError::Database(e.to_string()))?;
+
+                Ok(RetentionOutcome::Stored)
+            }
             RetentionClass::Class5StrictWorm => {
                 let id = compute_envelope_id(envelope)?;
                 let new_bytes = envelope
@@ -207,16 +228,6 @@ impl StorageEngine {
 
                 Ok(RetentionOutcome::Stored)
             }
-            RetentionClass::Class4BoundedTtl => {
-                let id = compute_envelope_id(envelope)?;
-                let bytes = envelope
-                    .encode_to_vec()
-                    .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
-                self.class1_append
-                    .insert(id, bytes)
-                    .map_err(|e| ArkStorageError::Database(e.to_string()))?;
-                Ok(RetentionOutcome::Stored)
-            }
         }
     }
 
@@ -233,6 +244,39 @@ impl StorageEngine {
             return Ok(Some(env));
         }
 
+        // Check Class 4: TTL with lazy expiration on read
+        if let Some(bytes) = self
+            .class4_ttl
+            .get(id)
+            .map_err(|e| ArkStorageError::Database(e.to_string()))?
+        {
+            let env = ArkEnvelope::decode_from_slice(&bytes)
+                .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
+
+            if let Some(expiration) = get_envelope_expiration(&env) {
+                let current_time_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+
+                let current_time_sec = current_time_ms / 1000;
+
+                // Support expiration in either seconds or milliseconds:
+                // if expiration < 10_000_000_000, treat as seconds, otherwise ms
+                let is_expired = if expiration < 10_000_000_000 {
+                    current_time_sec >= expiration
+                } else {
+                    current_time_ms >= expiration
+                };
+
+                if is_expired {
+                    return Ok(None);
+                }
+            }
+
+            return Ok(Some(env));
+        }
+
         // Check Class 5
         if let Some(bytes) = self
             .class5_worm
@@ -245,6 +289,32 @@ impl StorageEngine {
         }
 
         Ok(None)
+    }
+
+    /// Retrieve Class 4 envelope with explicit current_time reference for lazy expiration testing.
+    pub fn get_envelope_at_time(
+        &self,
+        id: &[u8; 32],
+        current_time: u64,
+    ) -> Result<Option<ArkEnvelope>> {
+        if let Some(bytes) = self
+            .class4_ttl
+            .get(id)
+            .map_err(|e| ArkStorageError::Database(e.to_string()))?
+        {
+            let env = ArkEnvelope::decode_from_slice(&bytes)
+                .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
+
+            if let Some(expiration) = get_envelope_expiration(&env) {
+                if current_time >= expiration {
+                    return Ok(None);
+                }
+            }
+
+            return Ok(Some(env));
+        }
+
+        self.get_envelope(id)
     }
 
     /// Point lookup for Class 2 Simple Replaceable record by sender_key_id and kind.
@@ -286,6 +356,43 @@ impl StorageEngine {
         Ok(None)
     }
 
+    /// Prune expired Class 4 records whose expiration timestamp <= current_time.
+    /// Returns the number of reclaimed records.
+    pub fn sweep_expired(&self, current_time: u64) -> Result<usize> {
+        let mut expired_keys = Vec::new();
+        let mut expired_ids = Vec::new();
+
+        for guard in self.class4_index.iter() {
+            let key = guard.key().map_err(|e| ArkStorageError::Database(e.to_string()))?;
+            if key.len() == 40 {
+                let exp_ts = u64::from_be_bytes(key[..8].try_into().unwrap());
+                if exp_ts <= current_time {
+                    let mut id = [0u8; 32];
+                    id.copy_from_slice(&key[8..40]);
+                    expired_keys.push(key.to_vec());
+                    expired_ids.push(id);
+                } else {
+                    // Since index is lexicographically ordered by expiration_ts (big-endian),
+                    // once exp_ts > current_time, all subsequent entries are in the future!
+                    break;
+                }
+            }
+        }
+
+        let reclaimed_count = expired_ids.len();
+
+        for (key, id) in expired_keys.into_iter().zip(expired_ids) {
+            self.class4_index
+                .remove(key)
+                .map_err(|e| ArkStorageError::Database(e.to_string()))?;
+            self.class4_ttl
+                .remove(id)
+                .map_err(|e| ArkStorageError::Database(e.to_string()))?;
+        }
+
+        Ok(reclaimed_count)
+    }
+
     /// Delete an envelope by id. Fails with WormViolation if envelope is Class 5 WORM.
     pub fn delete_envelope(&self, id: &[u8; 32]) -> Result<bool> {
         // Check Class 5 first: deletion strictly prohibited
@@ -310,6 +417,26 @@ impl StorageEngine {
         {
             self.class1_append
                 .remove(id)
+                .map_err(|e| ArkStorageError::Database(e.to_string()))?;
+            return Ok(true);
+        }
+
+        // Check Class 4
+        if let Some(bytes) = self
+            .class4_ttl
+            .get(id)
+            .map_err(|e| ArkStorageError::Database(e.to_string()))?
+        {
+            let env = ArkEnvelope::decode_from_slice(&bytes)
+                .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
+            let exp = get_envelope_expiration(&env).unwrap_or(0);
+            let idx_key = make_class4_index_key(exp, id);
+
+            self.class4_ttl
+                .remove(id)
+                .map_err(|e| ArkStorageError::Database(e.to_string()))?;
+            self.class4_index
+                .remove(idx_key)
                 .map_err(|e| ArkStorageError::Database(e.to_string()))?;
             return Ok(true);
         }
@@ -348,6 +475,13 @@ pub fn make_class3_key(sender_key_id: &[u8; 16], kind: u32, param_d: &[u8]) -> V
     key.extend_from_slice(sender_key_id);
     key.extend_from_slice(&kind.to_be_bytes());
     key.extend_from_slice(param_d);
+    key
+}
+
+pub fn make_class4_index_key(expiration: u64, id: &[u8; 32]) -> [u8; 40] {
+    let mut key = [0u8; 40];
+    key[..8].copy_from_slice(&expiration.to_be_bytes());
+    key[8..40].copy_from_slice(id);
     key
 }
 

@@ -115,3 +115,18 @@ pub fn get_envelope_param_d(envelope: &ArkEnvelope) -> Option<Vec<u8>> {
     None
 }
 
+/// Extract TAG_EXPIRATION timestamp (in milliseconds or seconds, 8-byte BE) if present.
+pub fn get_envelope_expiration(envelope: &ArkEnvelope) -> Option<u64> {
+    for tag in &envelope.tags {
+        if tag.tag_type == TAG_EXPIRATION {
+            if tag.tag_value.len() == 8 {
+                return Some(u64::from_be_bytes(tag.tag_value[..8].try_into().ok()?));
+            } else if tag.tag_value.len() == 4 {
+                return Some(u32::from_be_bytes(tag.tag_value[..4].try_into().ok()?) as u64);
+            }
+        }
+    }
+    None
+}
+
+
