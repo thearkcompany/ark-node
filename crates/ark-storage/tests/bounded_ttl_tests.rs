@@ -89,3 +89,36 @@ fn test_class4_sweeper_disk_reclamation() {
     assert!(engine.get_envelope_at_time(&id2, 50).unwrap().is_none());
     assert!(engine.get_envelope_at_time(&id3, 50).unwrap().is_none());
 }
+
+#[test]
+fn test_class4_background_sweeper_thread() {
+    let dir = tempdir().expect("temp dir");
+    let engine = std::sync::Arc::new(
+        StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("open engine"),
+    );
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    // Past expiration timestamp
+    let env = create_ttl_envelope(now - 10, b"expired item");
+    let id = compute_envelope_id(&env).unwrap();
+
+    engine.put_envelope(&env).unwrap();
+    assert!(engine.get_envelope_at_time(&id, 0).unwrap().is_some());
+
+    // Spawn background sweeper with 50ms interval
+    let sweeper = StorageEngine::spawn_background_sweeper(
+        engine.clone(),
+        std::time::Duration::from_millis(50),
+    );
+
+    // Give sweeper thread time to execute
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    sweeper.stop();
+
+    // Verify it was automatically pruned by the background sweeper
+    assert!(engine.get_envelope_at_time(&id, 0).unwrap().is_none());
+}

@@ -31,7 +31,12 @@ impl StorageEngine {
         std::fs::create_dir_all(&path_buf)?;
 
         let cache_size_bytes = (config.block_cache_mb as u64) * 1024 * 1024;
-        let memtable_max_bytes = (config.write_buffer_mb as u64) * 1024 * 1024;
+        // Bound memtable size per keyspace so total RAM across 6 active keyspaces
+        // strictly remains <= config.write_buffer_mb (e.g. 16 MB / 6 ≈ 2.66 MB)
+        let memtable_max_bytes = std::cmp::max(
+            512 * 1024,
+            ((config.write_buffer_mb as u64) * 1024 * 1024) / 6,
+        );
 
         let db = Database::builder(&path_buf)
             .cache_size(cache_size_bytes)
@@ -101,82 +106,14 @@ impl StorageEngine {
                 let sender_key_id = extract_sender_key_id(envelope);
                 let kind = get_envelope_kind(envelope);
                 let key = make_class2_key(&sender_key_id, kind);
-                let new_id = compute_envelope_id(envelope)?;
-                let new_ts = envelope.timestamp;
-
-                // Check existing record under (sender_key_id, kind)
-                if let Some(existing_bytes) = self
-                    .class2_replaceable
-                    .get(&key)
-                    .map_err(|e| ArkStorageError::Database(e.to_string()))?
-                {
-                    let existing_env = ArkEnvelope::decode_from_slice(&existing_bytes)
-                        .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
-                    let existing_id = compute_envelope_id(&existing_env)?;
-                    let existing_ts = existing_env.timestamp;
-
-                    // Deterministic Bivariate LWW: max(timestamp) || max(id)
-                    if (new_ts > existing_ts) || (new_ts == existing_ts && new_id > existing_id) {
-                        let new_bytes = envelope
-                            .encode_to_vec()
-                            .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
-                        self.class2_replaceable
-                            .insert(key, new_bytes)
-                            .map_err(|e| ArkStorageError::Database(e.to_string()))?;
-                        Ok(RetentionOutcome::Replaced)
-                    } else {
-                        Ok(RetentionOutcome::SupersededLww)
-                    }
-                } else {
-                    let new_bytes = envelope
-                        .encode_to_vec()
-                        .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
-                    self.class2_replaceable
-                        .insert(key, new_bytes)
-                        .map_err(|e| ArkStorageError::Database(e.to_string()))?;
-                    Ok(RetentionOutcome::Stored)
-                }
+                self.apply_bivariate_lww(&self.class2_replaceable, key, envelope)
             }
             RetentionClass::Class3ParamReplaceable => {
                 let sender_key_id = extract_sender_key_id(envelope);
                 let kind = get_envelope_kind(envelope);
                 let param_d = get_envelope_param_d(envelope).unwrap_or_default();
                 let key = make_class3_key(&sender_key_id, kind, &param_d);
-                let new_id = compute_envelope_id(envelope)?;
-                let new_ts = envelope.timestamp;
-
-                // Check existing record under (sender_key_id, kind, param_d)
-                if let Some(existing_bytes) = self
-                    .class3_param_d
-                    .get(&key)
-                    .map_err(|e| ArkStorageError::Database(e.to_string()))?
-                {
-                    let existing_env = ArkEnvelope::decode_from_slice(&existing_bytes)
-                        .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
-                    let existing_id = compute_envelope_id(&existing_env)?;
-                    let existing_ts = existing_env.timestamp;
-
-                    // Deterministic Bivariate LWW: max(timestamp) || max(id)
-                    if (new_ts > existing_ts) || (new_ts == existing_ts && new_id > existing_id) {
-                        let new_bytes = envelope
-                            .encode_to_vec()
-                            .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
-                        self.class3_param_d
-                            .insert(key, new_bytes)
-                            .map_err(|e| ArkStorageError::Database(e.to_string()))?;
-                        Ok(RetentionOutcome::Replaced)
-                    } else {
-                        Ok(RetentionOutcome::SupersededLww)
-                    }
-                } else {
-                    let new_bytes = envelope
-                        .encode_to_vec()
-                        .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
-                    self.class3_param_d
-                        .insert(key, new_bytes)
-                        .map_err(|e| ArkStorageError::Database(e.to_string()))?;
-                    Ok(RetentionOutcome::Stored)
-                }
+                self.apply_bivariate_lww(&self.class3_param_d, key, envelope)
             }
             RetentionClass::Class4BoundedTtl => {
                 let id = compute_envelope_id(envelope)?;
@@ -235,6 +172,47 @@ impl StorageEngine {
         }
     }
 
+    fn apply_bivariate_lww(
+        &self,
+        keyspace: &Keyspace,
+        key: Vec<u8>,
+        envelope: &ArkEnvelope,
+    ) -> Result<RetentionOutcome> {
+        let new_id = compute_envelope_id(envelope)?;
+        let new_ts = envelope.timestamp;
+
+        if let Some(existing_bytes) = keyspace
+            .get(&key)
+            .map_err(|e| ArkStorageError::Database(e.to_string()))?
+        {
+            let existing_env = ArkEnvelope::decode_from_slice(&existing_bytes)
+                .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
+            let existing_id = compute_envelope_id(&existing_env)?;
+            let existing_ts = existing_env.timestamp;
+
+            // Deterministic Bivariate LWW: max(timestamp) || max(id)
+            if (new_ts > existing_ts) || (new_ts == existing_ts && new_id > existing_id) {
+                let new_bytes = envelope
+                    .encode_to_vec()
+                    .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
+                keyspace
+                    .insert(key, new_bytes)
+                    .map_err(|e| ArkStorageError::Database(e.to_string()))?;
+                Ok(RetentionOutcome::Replaced)
+            } else {
+                Ok(RetentionOutcome::SupersededLww)
+            }
+        } else {
+            let new_bytes = envelope
+                .encode_to_vec()
+                .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
+            keyspace
+                .insert(key, new_bytes)
+                .map_err(|e| ArkStorageError::Database(e.to_string()))?;
+            Ok(RetentionOutcome::Stored)
+        }
+    }
+
     /// Retrieve an envelope by its canonical 32-byte SHA3-256 id.
     pub fn get_envelope(&self, id: &[u8; 32]) -> Result<Option<ArkEnvelope>> {
         // Check Class 1
@@ -290,6 +268,30 @@ impl StorageEngine {
             let env = ArkEnvelope::decode_from_slice(&bytes)
                 .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
             return Ok(Some(env));
+        }
+
+        // Check Class 2: Replaceable
+        for item in self.class2_replaceable.iter() {
+            let val = item.value().map_err(|e| ArkStorageError::Database(e.to_string()))?;
+            let env = ArkEnvelope::decode_from_slice(&val)
+                .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
+            if let Ok(env_id) = compute_envelope_id(&env) {
+                if &env_id == id {
+                    return Ok(Some(env));
+                }
+            }
+        }
+
+        // Check Class 3: Parameterized Replaceable
+        for item in self.class3_param_d.iter() {
+            let val = item.value().map_err(|e| ArkStorageError::Database(e.to_string()))?;
+            let env = ArkEnvelope::decode_from_slice(&val)
+                .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
+            if let Ok(env_id) = compute_envelope_id(&env) {
+                if &env_id == id {
+                    return Ok(Some(env));
+                }
+            }
         }
 
         Ok(None)
@@ -445,19 +447,105 @@ impl StorageEngine {
             return Ok(true);
         }
 
+        // Check Class 2
+        for item in self.class2_replaceable.iter() {
+            let (key, val) = item.into_inner().map_err(|e| ArkStorageError::Database(e.to_string()))?;
+            let env = ArkEnvelope::decode_from_slice(&val)
+                .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
+            if let Ok(env_id) = compute_envelope_id(&env) {
+                if &env_id == id {
+                    self.class2_replaceable
+                        .remove(key)
+                        .map_err(|e| ArkStorageError::Database(e.to_string()))?;
+                    return Ok(true);
+                }
+            }
+        }
+
+        // Check Class 3
+        for item in self.class3_param_d.iter() {
+            let (key, val) = item.into_inner().map_err(|e| ArkStorageError::Database(e.to_string()))?;
+            let env = ArkEnvelope::decode_from_slice(&val)
+                .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
+            if let Ok(env_id) = compute_envelope_id(&env) {
+                if &env_id == id {
+                    self.class3_param_d
+                        .remove(key)
+                        .map_err(|e| ArkStorageError::Database(e.to_string()))?;
+                    return Ok(true);
+                }
+            }
+        }
+
         Ok(false)
     }
 
     pub fn keyspace_count(&self) -> usize {
         self.db.keyspace_count()
     }
+
+    /// Spawns a background worker thread that periodically invokes `sweep_expired`.
+    pub fn spawn_background_sweeper(
+        engine: std::sync::Arc<Self>,
+        interval: std::time::Duration,
+    ) -> BackgroundSweeperHandle {
+        let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let shutdown_clone = shutdown.clone();
+
+        let thread = std::thread::Builder::new()
+            .name("ark-storage-sweeper".to_string())
+            .spawn(move || {
+                let mut last_sweep = std::time::Instant::now();
+                while !shutdown_clone.load(std::sync::atomic::Ordering::SeqCst) {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    if last_sweep.elapsed() >= interval {
+                        let current_time_sec = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs())
+                            .unwrap_or(0);
+                        let _ = engine.sweep_expired(current_time_sec);
+                        last_sweep = std::time::Instant::now();
+                    }
+                }
+            })
+            .expect("failed to spawn background sweeper thread");
+
+        BackgroundSweeperHandle {
+            shutdown,
+            handle: Some(thread),
+        }
+    }
+}
+
+/// Handle to an active background sweeper task.
+pub struct BackgroundSweeperHandle {
+    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl BackgroundSweeperHandle {
+    /// Signals the background sweeper to stop and waits for the thread to exit.
+    pub fn stop(mut self) {
+        self.shutdown.store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+impl Drop for BackgroundSweeperHandle {
+    fn drop(&mut self) {
+        self.shutdown.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 pub fn extract_sender_key_id(envelope: &ArkEnvelope) -> [u8; 16] {
-    if envelope.fast_header.len() >= 32 {
-        let mut key_id = [0u8; 16];
-        key_id.copy_from_slice(&envelope.fast_header[16..32]);
-        return key_id;
+    if envelope.fast_header.len() >= 64 {
+        if let Ok(bytes) = envelope.fast_header[..64].try_into() {
+            if let Ok(hdr) = ark_core::FastHeader::from_bytes(bytes) {
+                return hdr.sender_key_id;
+            }
+        }
     }
     if envelope.sender_id.len() >= 16 {
         let mut key_id = [0u8; 16];
