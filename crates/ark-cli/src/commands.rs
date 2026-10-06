@@ -19,6 +19,10 @@ pub struct Cli {
     #[arg(short, long)]
     pub identity: Option<PathBuf>,
 
+    /// Path to node persistent storage directory (defaults to ~/.ark/storage)
+    #[arg(short, long)]
+    pub data_dir: Option<PathBuf>,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
@@ -113,6 +117,20 @@ pub async fn execute() -> anyhow::Result<()> {
                     info!("Loaded identity from default path: {:?}", default_home);
                 }
             }
+
+            // Initialize storage engine
+            let storage_path = cli.data_dir.unwrap_or_else(|| {
+                std::env::var_os("HOME")
+                    .map(PathBuf::from)
+                    .map(|h| h.join(".ark").join("storage"))
+                    .unwrap_or_else(|| PathBuf::from("./ark-data"))
+            });
+            let storage = std::sync::Arc::new(ark_storage::StorageEngine::open(&storage_path, ark_storage::StorageConfig::frugal())?);
+            info!("Storage engine initialized at {:?} (<= 64 MB budget)", storage.path());
+            let _sweeper = ark_storage::StorageEngine::spawn_background_sweeper(
+                storage.clone(),
+                std::time::Duration::from_secs(60),
+            );
 
             info!("Node active in {:?} mode. Awaiting connections...", cli.role);
         }

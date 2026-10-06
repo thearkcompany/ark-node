@@ -9,8 +9,10 @@ ark-crypto = { path = "../ark-crypto" }
 ark-protocol = { path = "../ark-protocol" }
 ark-transport = { path = "../ark-transport" }
 ark-time = { path = "../ark-time" }
+ark-storage = { path = "../ark-storage" }
 clap = { version = "4.5", features = ["derive"] }
 tokio = { version = "1.39", features = ["full"] }
 tracing = "0.1"
 anyhow = "1.0"
 rand = "0.8"
+
