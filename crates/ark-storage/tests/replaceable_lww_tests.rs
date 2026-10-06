@@ -130,3 +130,40 @@ fn test_class3_parameterized_replaceable_isolation() {
     let fetched_eth_unchanged = engine.get_param_d(&sender, kind, b"dns/eth").expect("get").expect("found");
     assert_eq!(fetched_eth_unchanged.payload, b"2.2.2.2");
 }
+
+#[test]
+fn test_replaceable_unified_get_and_delete() {
+    let dir = tempdir().expect("temp dir");
+    let engine = StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("open engine");
+    let sender = [0x77u8; 16];
+    let kind = 10001; // Class 2
+
+    let env = create_replaceable_envelope(sender, kind, None, 100, b"initial payload");
+    let id = compute_envelope_id(&env).expect("id");
+
+    engine.put_envelope(&env).expect("put");
+
+    // Unified get_envelope(&id) finds Class 2 record
+    let found = engine.get_envelope(&id).expect("get").expect("found");
+    assert_eq!(found.payload, b"initial payload");
+
+    // Unified delete_envelope(&id) deletes Class 2 record
+    let deleted = engine.delete_envelope(&id).expect("delete");
+    assert!(deleted);
+    assert!(engine.get_envelope(&id).expect("get").is_none());
+    assert!(engine.get_replaceable(&sender, kind).expect("get").is_none());
+
+    // Test Class 3
+    let kind3 = 30005;
+    let env3 = create_replaceable_envelope(sender, kind3, Some(b"key1"), 100, b"param payload");
+    let id3 = compute_envelope_id(&env3).expect("id");
+
+    engine.put_envelope(&env3).expect("put");
+    let found3 = engine.get_envelope(&id3).expect("get").expect("found");
+    assert_eq!(found3.payload, b"param payload");
+
+    let deleted3 = engine.delete_envelope(&id3).expect("delete");
+    assert!(deleted3);
+    assert!(engine.get_envelope(&id3).expect("get").is_none());
+    assert!(engine.get_param_d(&sender, kind3, b"key1").expect("get").is_none());
+}

@@ -1,5 +1,6 @@
 //! Retention classes and classification for GCP-06.
 
+use ark_core::FastHeader;
 use ark_protocol::envelope::ArkEnvelope;
 use ark_protocol::tags::TAG_MASK_ROUTING;
 
@@ -91,14 +92,12 @@ pub fn get_envelope_kind(envelope: &ArkEnvelope) -> u32 {
 
     // 2. FastHeader fast_tag if set
     if envelope.fast_header.len() >= 64 {
-        let fast_tag = u32::from_ne_bytes([
-            envelope.fast_header[12],
-            envelope.fast_header[13],
-            envelope.fast_header[14],
-            envelope.fast_header[15],
-        ]);
-        if fast_tag != 0 {
-            return fast_tag;
+        if let Ok(bytes) = envelope.fast_header[..64].try_into() {
+            if let Ok(hdr) = FastHeader::from_bytes(bytes) {
+                if hdr.fast_tag != 0 {
+                    return hdr.fast_tag;
+                }
+            }
         }
     }
 

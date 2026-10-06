@@ -6,7 +6,7 @@ pub mod error;
 pub mod retention;
 
 pub use config::StorageConfig;
-pub use engine::{compute_envelope_id, StorageEngine};
+pub use engine::{compute_envelope_id, BackgroundSweeperHandle, StorageEngine};
 pub use error::{ArkStorageError, Result};
 pub use retention::{
     classify_retention, get_envelope_expiration, get_envelope_kind, get_envelope_param_d,
