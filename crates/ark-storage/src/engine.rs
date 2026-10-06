@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use fjall::{Database, Keyspace, KeyspaceCreateOptions};
+use fjall::{Database, Keyspace, KeyspaceCreateOptions, PersistMode};
 use ark_protocol::envelope::ArkEnvelope;
 use sha3::{Digest, Sha3_256};
 
@@ -90,10 +90,43 @@ impl StorageEngine {
                     .map_err(|e| ArkStorageError::Database(e.to_string()))?;
                 Ok(RetentionOutcome::Stored)
             }
+            RetentionClass::Class5StrictWorm => {
+                let id = compute_envelope_id(envelope)?;
+                let new_bytes = envelope
+                    .encode_to_vec()
+                    .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
+
+                // Check if already exists in WORM storage
+                if let Some(existing_bytes) = self
+                    .class5_worm
+                    .get(&id)
+                    .map_err(|e| ArkStorageError::Database(e.to_string()))?
+                {
+                    if existing_bytes.as_ref() == new_bytes.as_slice() {
+                        return Ok(RetentionOutcome::IdempotentDuplicate);
+                    } else {
+                        return Err(ArkStorageError::WormViolation(format!(
+                            "Divergent payload write rejected for WORM id {:x?}",
+                            &id[..8]
+                        )));
+                    }
+                }
+
+                // Insert into WORM keyspace
+                self.class5_worm
+                    .insert(id, new_bytes)
+                    .map_err(|e| ArkStorageError::Database(e.to_string()))?;
+
+                // Class 5 forces immediate synchronous fsync to protect equivocation proofs
+                self.db
+                    .persist(PersistMode::SyncAll)
+                    .map_err(|e| ArkStorageError::Database(e.to_string()))?;
+
+                Ok(RetentionOutcome::Stored)
+            }
             RetentionClass::Class2Replaceable
             | RetentionClass::Class3ParamReplaceable
-            | RetentionClass::Class4BoundedTtl
-            | RetentionClass::Class5StrictWorm => {
+            | RetentionClass::Class4BoundedTtl => {
                 let id = compute_envelope_id(envelope)?;
                 let bytes = envelope
                     .encode_to_vec()
@@ -108,6 +141,7 @@ impl StorageEngine {
 
     /// Retrieve an envelope by its canonical 32-byte SHA3-256 id.
     pub fn get_envelope(&self, id: &[u8; 32]) -> Result<Option<ArkEnvelope>> {
+        // Check Class 1
         if let Some(bytes) = self
             .class1_append
             .get(id)
@@ -117,7 +151,50 @@ impl StorageEngine {
                 .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
             return Ok(Some(env));
         }
+
+        // Check Class 5
+        if let Some(bytes) = self
+            .class5_worm
+            .get(id)
+            .map_err(|e| ArkStorageError::Database(e.to_string()))?
+        {
+            let env = ArkEnvelope::decode_from_slice(&bytes)
+                .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
+            return Ok(Some(env));
+        }
+
         Ok(None)
+    }
+
+    /// Delete an envelope by id. Fails with WormViolation if envelope is Class 5 WORM.
+    pub fn delete_envelope(&self, id: &[u8; 32]) -> Result<bool> {
+        // Check Class 5 first: deletion strictly prohibited
+        if self
+            .class5_worm
+            .get(id)
+            .map_err(|e| ArkStorageError::Database(e.to_string()))?
+            .is_some()
+        {
+            return Err(ArkStorageError::WormViolation(format!(
+                "Attempted deletion of immutable WORM record {:x?}",
+                &id[..8]
+            )));
+        }
+
+        // Check Class 1
+        if self
+            .class1_append
+            .get(id)
+            .map_err(|e| ArkStorageError::Database(e.to_string()))?
+            .is_some()
+        {
+            self.class1_append
+                .remove(id)
+                .map_err(|e| ArkStorageError::Database(e.to_string()))?;
+            return Ok(true);
+        }
+
+        Ok(false)
     }
 
     pub fn keyspace_count(&self) -> usize {
