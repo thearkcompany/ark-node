@@ -5,7 +5,9 @@ use sha3::{Digest, Sha3_256};
 
 use crate::config::StorageConfig;
 use crate::error::{ArkStorageError, Result};
-use crate::retention::{classify_retention, RetentionClass, RetentionOutcome};
+use crate::retention::{
+    classify_retention, get_envelope_kind, get_envelope_param_d, RetentionClass, RetentionOutcome,
+};
 
 pub struct StorageEngine {
     db: Database,
@@ -90,6 +92,87 @@ impl StorageEngine {
                     .map_err(|e| ArkStorageError::Database(e.to_string()))?;
                 Ok(RetentionOutcome::Stored)
             }
+            RetentionClass::Class2Replaceable => {
+                let sender_key_id = extract_sender_key_id(envelope);
+                let kind = get_envelope_kind(envelope);
+                let key = make_class2_key(&sender_key_id, kind);
+                let new_id = compute_envelope_id(envelope)?;
+                let new_ts = envelope.timestamp;
+
+                // Check existing record under (sender_key_id, kind)
+                if let Some(existing_bytes) = self
+                    .class2_replaceable
+                    .get(&key)
+                    .map_err(|e| ArkStorageError::Database(e.to_string()))?
+                {
+                    let existing_env = ArkEnvelope::decode_from_slice(&existing_bytes)
+                        .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
+                    let existing_id = compute_envelope_id(&existing_env)?;
+                    let existing_ts = existing_env.timestamp;
+
+                    // Deterministic Bivariate LWW: max(timestamp) || max(id)
+                    if (new_ts > existing_ts) || (new_ts == existing_ts && new_id > existing_id) {
+                        let new_bytes = envelope
+                            .encode_to_vec()
+                            .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
+                        self.class2_replaceable
+                            .insert(key, new_bytes)
+                            .map_err(|e| ArkStorageError::Database(e.to_string()))?;
+                        Ok(RetentionOutcome::Replaced)
+                    } else {
+                        Ok(RetentionOutcome::SupersededLww)
+                    }
+                } else {
+                    let new_bytes = envelope
+                        .encode_to_vec()
+                        .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
+                    self.class2_replaceable
+                        .insert(key, new_bytes)
+                        .map_err(|e| ArkStorageError::Database(e.to_string()))?;
+                    Ok(RetentionOutcome::Stored)
+                }
+            }
+            RetentionClass::Class3ParamReplaceable => {
+                let sender_key_id = extract_sender_key_id(envelope);
+                let kind = get_envelope_kind(envelope);
+                let param_d = get_envelope_param_d(envelope).unwrap_or_default();
+                let key = make_class3_key(&sender_key_id, kind, &param_d);
+                let new_id = compute_envelope_id(envelope)?;
+                let new_ts = envelope.timestamp;
+
+                // Check existing record under (sender_key_id, kind, param_d)
+                if let Some(existing_bytes) = self
+                    .class3_param_d
+                    .get(&key)
+                    .map_err(|e| ArkStorageError::Database(e.to_string()))?
+                {
+                    let existing_env = ArkEnvelope::decode_from_slice(&existing_bytes)
+                        .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
+                    let existing_id = compute_envelope_id(&existing_env)?;
+                    let existing_ts = existing_env.timestamp;
+
+                    // Deterministic Bivariate LWW: max(timestamp) || max(id)
+                    if (new_ts > existing_ts) || (new_ts == existing_ts && new_id > existing_id) {
+                        let new_bytes = envelope
+                            .encode_to_vec()
+                            .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
+                        self.class3_param_d
+                            .insert(key, new_bytes)
+                            .map_err(|e| ArkStorageError::Database(e.to_string()))?;
+                        Ok(RetentionOutcome::Replaced)
+                    } else {
+                        Ok(RetentionOutcome::SupersededLww)
+                    }
+                } else {
+                    let new_bytes = envelope
+                        .encode_to_vec()
+                        .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
+                    self.class3_param_d
+                        .insert(key, new_bytes)
+                        .map_err(|e| ArkStorageError::Database(e.to_string()))?;
+                    Ok(RetentionOutcome::Stored)
+                }
+            }
             RetentionClass::Class5StrictWorm => {
                 let id = compute_envelope_id(envelope)?;
                 let new_bytes = envelope
@@ -124,9 +207,7 @@ impl StorageEngine {
 
                 Ok(RetentionOutcome::Stored)
             }
-            RetentionClass::Class2Replaceable
-            | RetentionClass::Class3ParamReplaceable
-            | RetentionClass::Class4BoundedTtl => {
+            RetentionClass::Class4BoundedTtl => {
                 let id = compute_envelope_id(envelope)?;
                 let bytes = envelope
                     .encode_to_vec()
@@ -166,6 +247,45 @@ impl StorageEngine {
         Ok(None)
     }
 
+    /// Point lookup for Class 2 Simple Replaceable record by sender_key_id and kind.
+    pub fn get_replaceable(
+        &self,
+        sender_key_id: &[u8; 16],
+        kind: u32,
+    ) -> Result<Option<ArkEnvelope>> {
+        let key = make_class2_key(sender_key_id, kind);
+        if let Some(bytes) = self
+            .class2_replaceable
+            .get(&key)
+            .map_err(|e| ArkStorageError::Database(e.to_string()))?
+        {
+            let env = ArkEnvelope::decode_from_slice(&bytes)
+                .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
+            return Ok(Some(env));
+        }
+        Ok(None)
+    }
+
+    /// Point lookup for Class 3 Parameterized Replaceable record by sender_key_id, kind, and param_d.
+    pub fn get_param_d(
+        &self,
+        sender_key_id: &[u8; 16],
+        kind: u32,
+        param_d: &[u8],
+    ) -> Result<Option<ArkEnvelope>> {
+        let key = make_class3_key(sender_key_id, kind, param_d);
+        if let Some(bytes) = self
+            .class3_param_d
+            .get(&key)
+            .map_err(|e| ArkStorageError::Database(e.to_string()))?
+        {
+            let env = ArkEnvelope::decode_from_slice(&bytes)
+                .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
+            return Ok(Some(env));
+        }
+        Ok(None)
+    }
+
     /// Delete an envelope by id. Fails with WormViolation if envelope is Class 5 WORM.
     pub fn delete_envelope(&self, id: &[u8; 32]) -> Result<bool> {
         // Check Class 5 first: deletion strictly prohibited
@@ -200,6 +320,35 @@ impl StorageEngine {
     pub fn keyspace_count(&self) -> usize {
         self.db.keyspace_count()
     }
+}
+
+pub fn extract_sender_key_id(envelope: &ArkEnvelope) -> [u8; 16] {
+    if envelope.fast_header.len() >= 32 {
+        let mut key_id = [0u8; 16];
+        key_id.copy_from_slice(&envelope.fast_header[16..32]);
+        return key_id;
+    }
+    if envelope.sender_id.len() >= 16 {
+        let mut key_id = [0u8; 16];
+        key_id.copy_from_slice(&envelope.sender_id[..16]);
+        return key_id;
+    }
+    [0u8; 16]
+}
+
+pub fn make_class2_key(sender_key_id: &[u8; 16], kind: u32) -> Vec<u8> {
+    let mut key = Vec::with_capacity(20);
+    key.extend_from_slice(sender_key_id);
+    key.extend_from_slice(&kind.to_be_bytes());
+    key
+}
+
+pub fn make_class3_key(sender_key_id: &[u8; 16], kind: u32, param_d: &[u8]) -> Vec<u8> {
+    let mut key = Vec::with_capacity(20 + param_d.len());
+    key.extend_from_slice(sender_key_id);
+    key.extend_from_slice(&kind.to_be_bytes());
+    key.extend_from_slice(param_d);
+    key
 }
 
 pub fn compute_envelope_id(envelope: &ArkEnvelope) -> Result<[u8; 32]> {

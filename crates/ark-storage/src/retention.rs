@@ -105,3 +105,13 @@ pub fn get_envelope_kind(envelope: &ArkEnvelope) -> u32 {
     1 // default kind = 1 (regular immutable event)
 }
 
+/// Extract TAG_PARAM_D value if present.
+pub fn get_envelope_param_d(envelope: &ArkEnvelope) -> Option<Vec<u8>> {
+    for tag in &envelope.tags {
+        if tag.tag_type == TAG_PARAM_D {
+            return Some(tag.tag_value.clone());
+        }
+    }
+    None
+}
+
