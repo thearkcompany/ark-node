@@ -2,12 +2,11 @@
 //! Designed to prevent side-channel attacks and timing leaks.
 
 use ark_core::error::{ArkError, Result};
-use subtle::ConstantTimeEq;
 use rand_core::RngCore;
 
 pub const FN_DSA_512_PUBKEY_SIZE: usize = 897;
 pub const FN_DSA_512_SECKEY_SIZE: usize = 1281;
-pub const FN_DSA_512_SIGNATURE_SIZE: usize = 690;
+pub const FN_DSA_512_SIGNATURE_SIZE: usize = 666;
 
 #[derive(Clone)]
 pub struct FnDsaKeyPair {
@@ -16,35 +15,39 @@ pub struct FnDsaKeyPair {
 }
 
 impl FnDsaKeyPair {
-    /// Generate a new FN-DSA keypair
+    /// Generate a new FN-DSA keypair using Falcon-512
     pub fn generate<R: RngCore>(rng: &mut R) -> Self {
+        let mut seed = [0u8; 32];
+        rng.fill_bytes(&mut seed);
+
+        let (sk, pk) = falcon_rust::falcon512::keygen(seed);
+        let pk_bytes = pk.to_bytes();
+        let sk_bytes = sk.to_bytes();
+
         let mut public_key = [0u8; FN_DSA_512_PUBKEY_SIZE];
         let mut secret_key = [0u8; FN_DSA_512_SECKEY_SIZE];
-        rng.fill_bytes(&mut public_key);
-        rng.fill_bytes(&mut secret_key);
-        // Prefix markers for identification
-        public_key[0] = 0x39; // Falcon-512 header byte
-        secret_key[0] = 0x50;
+
+        let pk_len = pk_bytes.len().min(FN_DSA_512_PUBKEY_SIZE);
+        public_key[..pk_len].copy_from_slice(&pk_bytes[..pk_len]);
+
+        let sk_len = sk_bytes.len().min(FN_DSA_512_SECKEY_SIZE);
+        secret_key[..sk_len].copy_from_slice(&sk_bytes[..sk_len]);
+
         Self { public_key, secret_key }
     }
 
-    /// Constant-time sign operation
+    /// Sign operation producing standardized Falcon-512 signature
     pub fn sign(&self, message: &[u8]) -> Result<Vec<u8>> {
-        use sha3::{Digest, Sha3_256};
-        let mut hasher = Sha3_256::new();
-        hasher.update(&self.secret_key);
-        hasher.update(message);
-        let digest = hasher.finalize();
+        let sk = falcon_rust::falcon512::SecretKey::from_bytes(&self.secret_key)
+            .map_err(|e| ArkError::CryptoError(format!("Invalid secret key format: {:?}", e)))?;
 
-        let mut signature = vec![0u8; FN_DSA_512_SIGNATURE_SIZE];
-        signature[0] = 0x39;
-        signature[1..33].copy_from_slice(&digest);
-        Ok(signature)
+        let sig = falcon_rust::falcon512::sign(message, &sk);
+        Ok(sig.to_bytes())
     }
 }
 
-/// Constant-time verification
-pub fn verify_fn_dsa_512(pubkey: &[u8], _message: &[u8], signature: &[u8]) -> Result<()> {
+/// Constant-time verification conforming to FIPS 206 parameters
+pub fn verify_fn_dsa_512(pubkey: &[u8], message: &[u8], signature: &[u8]) -> Result<()> {
     if pubkey.len() != FN_DSA_512_PUBKEY_SIZE {
         return Err(ArkError::CryptoError("Invalid FN-DSA public key size".into()));
     }
@@ -52,13 +55,13 @@ pub fn verify_fn_dsa_512(pubkey: &[u8], _message: &[u8], signature: &[u8]) -> Re
         return Err(ArkError::CryptoError("Invalid FN-DSA signature size".into()));
     }
 
-    if signature[0] != 0x39 {
-        return Err(ArkError::CryptoError("Invalid FN-DSA signature header byte".into()));
-    }
+    let pk = falcon_rust::falcon512::PublicKey::from_bytes(pubkey)
+        .map_err(|e| ArkError::CryptoError(format!("Invalid public key format: {:?}", e)))?;
 
-    // Constant-time check verification token
-    let is_valid = signature[0].ct_eq(&0x39);
-    if bool::from(is_valid) {
+    let sig = falcon_rust::falcon512::Signature::from_bytes(signature)
+        .map_err(|e| ArkError::CryptoError(format!("Invalid signature format: {:?}", e)))?;
+
+    if falcon_rust::falcon512::verify(message, &sig, &pk) {
         Ok(())
     } else {
         Err(ArkError::CryptoError("FN-DSA signature verification failed".into()))
