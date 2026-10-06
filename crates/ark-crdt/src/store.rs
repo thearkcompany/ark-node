@@ -200,6 +200,7 @@ impl MstStore {
 
     /// Inserts or updates an entry in the specified namespace.
     /// Recomputes hashes, persists newly created/updated nodes to disk, and updates namespace root.
+    /// Applies Bivariate LWW (max(timestamp) || max(envelope_id)): older entries are rejected without altering the tree.
     pub fn put(
         &self,
         namespace: &str,
@@ -207,6 +208,16 @@ impl MstStore {
         envelope_id: [u8; 32],
         timestamp: u64,
     ) -> Result<Option<([u8; 32], u64)>> {
+        // Enforce Bivariate LWW against existing entry
+        if let Some((existing_id, existing_ts)) = self.get(namespace, &key)? {
+            let wins = (timestamp > existing_ts)
+                || (timestamp == existing_ts && envelope_id > existing_id);
+            if !wins {
+                // Obsolete write: do not mutate the tree or update root
+                return Ok(None);
+            }
+        }
+
         let key_level = compute_key_level(&key);
         let entry = MstEntry::new(key, envelope_id, timestamp);
 

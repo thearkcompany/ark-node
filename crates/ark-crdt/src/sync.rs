@@ -314,14 +314,11 @@ pub fn apply_sync_response(
     // Phase 2: Ingest missing envelopes into storage engine
     for proto_envelope in &res.missing_envelopes {
         let envelope: ArkEnvelope = proto_envelope.clone().into();
-        if let Ok(outcome) = storage.put_envelope(&envelope) {
-            match outcome {
-                ark_storage::RetentionOutcome::Stored
-                | ark_storage::RetentionOutcome::Replaced => {
-                    stats.envelopes_stored += 1;
-                }
-                _ => {}
-            }
+        if let Ok(
+            ark_storage::RetentionOutcome::Stored | ark_storage::RetentionOutcome::Replaced,
+        ) = storage.put_envelope(&envelope)
+        {
+            stats.envelopes_stored += 1;
         }
     }
 

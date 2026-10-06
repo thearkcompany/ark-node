@@ -130,7 +130,7 @@ impl StorageEngine {
                 // Store in class4_index: [expiration_ts: 8B BE] || [id: 32B] -> empty
                 let index_key = make_class4_index_key(expiration, &id);
                 self.class4_index
-                    .insert(index_key, &[])
+                    .insert(index_key, [])
                     .map_err(|e| ArkStorageError::Database(e.to_string()))?;
 
                 Ok(RetentionOutcome::Stored)
@@ -144,7 +144,7 @@ impl StorageEngine {
                 // Check if already exists in WORM storage
                 if let Some(existing_bytes) = self
                     .class5_worm
-                    .get(&id)
+                    .get(id)
                     .map_err(|e| ArkStorageError::Database(e.to_string()))?
                 {
                     if existing_bytes.as_ref() == new_bytes.as_slice() {

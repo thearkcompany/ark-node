@@ -291,6 +291,20 @@ impl MerkleSearchTree {
         }
     }
 
+    /// Creates a placeholder tree with a known root hash but no in-memory nodes.
+    /// Used for diff computation against a peer's remote root.
+    pub fn with_root_hash(hash: [u8; 32]) -> Self {
+        if hash == [0u8; 32] {
+            return Self::new();
+        }
+        let mut node = MstNode::new(0);
+        node.cached_hash = Some(hash);
+        Self {
+            root: Some(Arc::new(node)),
+            len: 0,
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }

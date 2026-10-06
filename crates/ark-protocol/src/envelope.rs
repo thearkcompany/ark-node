@@ -36,6 +36,7 @@ pub struct ArkEnvelope {
 }
 
 impl ArkEnvelope {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         fast_header: [u8; 64],
         sender_id: [u8; 32],
