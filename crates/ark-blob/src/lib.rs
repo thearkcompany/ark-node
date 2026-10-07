@@ -2,8 +2,10 @@
 
 pub mod cas;
 pub mod constants;
+pub mod custody;
 pub mod error;
 pub mod gf;
+pub mod ghost_lock;
 pub mod manifest;
 pub mod matrix;
 pub mod merkle;
@@ -12,8 +14,10 @@ pub mod store;
 
 pub use cas::{CasDiskStore, StoragePaths};
 pub use constants::*;
+pub use custody::{CustodyRecord, CustodyState, CustodyStateMachine};
 pub use error::{BlobError, Result};
 pub use gf::{mul_slice, mul_slice_add};
+pub use ghost_lock::{GhostLockEntry, SafeGhostLock};
 pub use manifest::{BlobManifest, ShardStatus};
 pub use merkle::{
     compute_blob_cid, compute_merkle_root, compute_shard_merkle_roots,
