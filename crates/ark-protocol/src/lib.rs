@@ -11,7 +11,10 @@ pub use envelope::*;
 pub use tags::*;
 pub use hashing::*;
 pub use wire::*;
-pub use proto::{ArkNodeStatus, MstEntryWire, MstNodeWire, MstSyncRequest, MstSyncResponse};
+pub use proto::{
+    ArkNodeStatus, DomainResolveResponse, MstEntryWire, MstNodeWire, MstSyncRequest,
+    MstSyncResponse,
+};
 
 impl From<envelope::ArkEnvelope> for proto::ArkEnvelope {
     fn from(env: envelope::ArkEnvelope) -> Self {
