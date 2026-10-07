@@ -342,7 +342,13 @@ impl<C: PmtClock + PmtClockBackend + 'static> PaasEngine<C> {
                         0
                     };
 
-                    func.call(&mut *store, (ptr, payload_len))?
+                    let res = func.call(&mut *store, (ptr, payload_len));
+                    if ptr != 0 {
+                        if let Ok(dealloc_fn) = instance.get_typed_func::<(u32, u32), ()>(&mut *store, "ark_dealloc") {
+                            let _ = dealloc_fn.call(&mut *store, (ptr, payload_len));
+                        }
+                    }
+                    res?
                 } else if let Ok(func) = instance.get_typed_func::<(), i32>(&mut *store, &entrypoint) {
                     func.call(&mut *store, ())?
                 } else if let Ok(func) = instance.get_typed_func::<(), ()>(&mut *store, &entrypoint) {

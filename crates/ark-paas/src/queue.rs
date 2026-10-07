@@ -205,14 +205,21 @@ impl ArkQueue {
     }
 
     /// Flush completed in-memory tasks to LSM storage lazily during periodic compactions/maintenance.
-    /// Returns the number of tombstone/completed entries persisted.
+    /// Deletes the task from storage (tombstone) to reclaim disk space.
     pub fn flush_completed_to_storage(&self) -> Result<usize> {
         let mut count = 0;
         for item in self.completed_in_memory.iter() {
             let task = item.value();
-            self.persist_task_to_storage(task)?;
+            let key = task.id.as_bytes();
+            self.tasks_keyspace
+                .remove(key)
+                .map_err(|e| ArkQueueError::Database(e.to_string()))?;
             count += 1;
         }
+        self.storage
+            .db()
+            .persist(PersistMode::SyncAll)
+            .map_err(|e| ArkQueueError::Database(e.to_string()))?;
         Ok(count)
     }
 
