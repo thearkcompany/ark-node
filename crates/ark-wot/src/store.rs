@@ -147,7 +147,7 @@ impl WotStore {
     }
 
     /// Recalculate cache entries.
-    pub fn refresh_cache(&self, current_pmt: u64) {
+    pub fn refresh_cache(&self, _current_pmt: u64) {
         let g = self.graph.read();
 
         // Self is always CorePeer
@@ -161,37 +161,23 @@ impl WotStore {
             },
         );
 
-        // Re-evaluate known nodes
+        // Re-evaluate distinct subject nodes from graph
         for item in self.attestations_ks.iter() {
             if let Ok(val) = item.value() {
                 if let Ok(att) = TrustAttestation::from_cbor(&val) {
                     let subject = att.subject_id;
-                    if self.validator.is_revoked(&att.issuer_id, &att.subject_id) {
-                        // Revoked edge
-                        let eval = g.evaluate_trust(&subject);
-                        self.cache.insert(subject, eval);
-                    } else if current_pmt > 0 && current_pmt > att.expires_at_pmt {
-                        // Expired edge
-                        self.cache.insert(
-                            subject,
-                            TrustEvaluation {
-                                target: subject,
-                                score: 0.0,
-                                distance: u32::MAX,
-                                tier: TrustTier::Untrusted,
-                            },
-                        );
-                    } else {
-                        let eval = g.evaluate_trust(&subject);
-                        self.cache.insert(subject, eval);
+                    if subject == self.local_root {
+                        continue;
                     }
+                    let eval = g.evaluate_trust(&subject);
+                    self.cache.insert(subject, eval);
                 }
             }
         }
     }
 
     /// Sub-microsecond O(1) concurrent cache evaluation.
-    pub fn evaluate_cached(&self, target: &[u8; 32], _current_pmt: u64) -> TrustEvaluation {
+    pub fn evaluate_cached(&self, target: &[u8; 32], current_pmt: u64) -> TrustEvaluation {
         if target == &self.local_root {
             return TrustEvaluation {
                 target: *target,
@@ -201,11 +187,13 @@ impl WotStore {
             };
         }
 
-        if let Some(eval) = self.cache.get(target) {
-            return eval.clone();
+        if current_pmt == 0 {
+            if let Some(eval) = self.cache.get(target) {
+                return eval.clone();
+            }
         }
 
-        // Cache miss: compute via graph
+        // Compute via graph
         let g = self.graph.read();
         let eval = g.evaluate_trust(target);
         self.cache.insert(*target, eval.clone());

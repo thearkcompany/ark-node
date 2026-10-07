@@ -115,7 +115,7 @@ impl TrustAttestation {
 
         // Verify ArkID derivation: issuer_id = SHA3-256(pubkey)
         let derived_issuer_id: [u8; 32] = Sha3_256::digest(issuer_pubkey).into();
-        if self.issuer_id != [0u8; 32] && self.issuer_id != derived_issuer_id {
+        if self.issuer_id != derived_issuer_id {
             return Err(ArkError::CryptoError("Public key does not match issuer_id".into()));
         }
 
@@ -253,7 +253,7 @@ impl TrustRevocation {
         }
 
         let derived_issuer_id: [u8; 32] = Sha3_256::digest(issuer_pubkey).into();
-        if self.issuer_id != [0u8; 32] && self.issuer_id != derived_issuer_id {
+        if self.issuer_id != derived_issuer_id {
             return Err(ArkError::CryptoError("Public key does not match issuer_id".into()));
         }
 
