@@ -80,10 +80,12 @@ impl NodeRuntimeBuilder {
         let join_set = Arc::new(tokio::sync::Mutex::new(JoinSet::new()));
         let status = Arc::new(AtomicU8::new(NodeRuntimeStatus::Running as u8));
 
+        let dispatcher = Arc::new(crate::dispatcher::EnvelopeDispatcher::new(storage.clone())?);
+
         let endpoint_arc = Arc::new(server_endpoint);
         let accept_endpoint = endpoint_arc.clone();
         let accept_token = cancel_token.clone();
-        let accept_storage = storage.clone();
+        let accept_dispatcher = dispatcher.clone();
 
         // Spawn QUIC accept loop inside JoinSet
         {
@@ -100,7 +102,7 @@ impl NodeRuntimeBuilder {
                                 None => break,
                             };
                             let conn_token = accept_token.clone();
-                            let _conn_storage = accept_storage.clone();
+                            let conn_dispatcher = accept_dispatcher.clone();
                             tokio::spawn(async move {
                                 match incoming.await {
                                     Ok(conn) => {
@@ -113,13 +115,34 @@ impl NodeRuntimeBuilder {
                                                 stream = conn.accept_bi() => {
                                                     match stream {
                                                         Ok((mut send, mut recv)) => {
-                                                            let mut buf = [0u8; 1024];
-                                                            if let Ok(n) = recv.read(&mut buf).await {
-                                                                if let Some(n) = n {
-                                                                    let _ = send.write_all(&buf[..n]).await;
-                                                                    let _ = send.finish();
+                                                            let disp = conn_dispatcher.clone();
+                                                            tokio::spawn(async move {
+                                                                // Read wire frame with rigid 64KB max envelope ceiling
+                                                                let mut wire_buf = Vec::new();
+                                                                let mut chunk = [0u8; 4096];
+                                                                while let Ok(Some(n)) = recv.read(&mut chunk).await {
+                                                                    wire_buf.extend_from_slice(&chunk[..n]);
+                                                                    if wire_buf.len() > ark_core::constants::MAX_ENVELOPE_SIZE + 64 {
+                                                                        break;
+                                                                    }
                                                                 }
-                                                            }
+
+                                                                if wire_buf.len() >= ark_core::constants::FAST_HEADER_SIZE {
+                                                                    match disp.process_wire_frame(&wire_buf) {
+                                                                        Ok(_) => {
+                                                                            let _ = send.write_all(&[1u8]).await;
+                                                                        }
+                                                                        Err(e) => {
+                                                                            warn!("Dispatch error: {:?}", e);
+                                                                            let _ = send.write_all(&[0u8]).await;
+                                                                        }
+                                                                    }
+                                                                } else {
+                                                                    // Fallback echo if less than 64B for simple ping
+                                                                    let _ = send.write_all(&wire_buf).await;
+                                                                }
+                                                                let _ = send.finish();
+                                                            });
                                                         }
                                                         Err(_) => break,
                                                     }
@@ -144,6 +167,7 @@ impl NodeRuntimeBuilder {
             cancel_token,
             join_set,
             storage,
+            dispatcher,
             endpoint: endpoint_arc,
         })
     }
@@ -155,6 +179,7 @@ pub struct NodeHandle {
     cancel_token: CancellationToken,
     join_set: Arc<tokio::sync::Mutex<JoinSet<()>>>,
     storage: Arc<StorageEngine>,
+    dispatcher: Arc<crate::dispatcher::EnvelopeDispatcher>,
     endpoint: Arc<ArkQuicEndpoint>,
 }
 
@@ -165,6 +190,10 @@ impl NodeHandle {
 
     pub fn storage(&self) -> Arc<StorageEngine> {
         self.storage.clone()
+    }
+
+    pub fn dispatcher(&self) -> Arc<crate::dispatcher::EnvelopeDispatcher> {
+        self.dispatcher.clone()
     }
 
     pub fn status(&self) -> NodeRuntimeStatus {

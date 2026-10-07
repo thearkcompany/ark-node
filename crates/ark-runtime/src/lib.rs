@@ -4,9 +4,11 @@
 //! encapsulating network listening, task supervision, wire demux, and subsystem dispatch.
 
 pub mod config;
+pub mod dispatcher;
 pub mod error;
 pub mod runtime;
 
 pub use config::{NodeRuntimeConfig, NodeRuntimeStatus, Role};
+pub use dispatcher::{DispatchOutcome, EnvelopeDispatcher};
 pub use error::{ArkRuntimeError, Result};
 pub use runtime::{NodeHandle, NodeRuntimeBuilder};
