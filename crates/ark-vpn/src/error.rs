@@ -43,6 +43,12 @@ pub enum VpnError {
 
     #[error("Packet dropped by ACL policy: {0}")]
     AclDenied(String),
+
+    #[error("Relay route not found for recipient: {0}")]
+    RelayRouteNotFound(String),
+
+    #[error("Engine state error: {0}")]
+    EngineError(String),
 }
 
 pub type Result<T> = std::result::Result<T, VpnError>;
