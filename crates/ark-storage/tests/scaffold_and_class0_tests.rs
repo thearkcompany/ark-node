@@ -51,6 +51,13 @@ fn test_classify_retention_all_classes() {
     let env_ephemeral_mask = dummy_envelope(1, TAG_MASK_ROUTING, vec![]);
     assert_eq!(classify_retention(&env_ephemeral_mask), RetentionClass::Class0Ephemeral);
 
+    // Class 0 Ephemeral: VPN data (0x0008) and VPN handshake (0x0009)
+    let env_vpn_data = dummy_envelope(0x0008, 0, vec![]);
+    assert_eq!(classify_retention(&env_vpn_data), RetentionClass::Class0Ephemeral);
+
+    let env_vpn_handshake = dummy_envelope(0x0009, 0, vec![]);
+    assert_eq!(classify_retention(&env_vpn_handshake), RetentionClass::Class0Ephemeral);
+
     // Class 4 Bounded TTL: carries TAG_EXPIRATION
     let env_ttl = dummy_envelope(1001, 0, vec![BinaryTag::new(TAG_EXPIRATION, 1_800_000_000u64.to_be_bytes().to_vec())]);
     assert_eq!(classify_retention(&env_ttl), RetentionClass::Class4BoundedTtl);

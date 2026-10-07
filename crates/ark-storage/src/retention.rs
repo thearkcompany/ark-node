@@ -43,8 +43,12 @@ pub enum RetentionOutcome {
 pub fn classify_retention(envelope: &ArkEnvelope) -> RetentionClass {
     let kind = get_envelope_kind(envelope);
 
-    // 1. Ephemeral routing or kind 20000..30000
-    if (envelope.core_tag_mask & TAG_MASK_ROUTING) != 0 || (20000..30000).contains(&kind) {
+    // 1. Ephemeral routing, VPN traffic (KIND_VPN_DATA 0x0008, KIND_VPN_HANDSHAKE 0x0009), or kind 20000..30000
+    if (envelope.core_tag_mask & TAG_MASK_ROUTING) != 0
+        || kind == 0x0008
+        || kind == 0x0009
+        || (20000..30000).contains(&kind)
+    {
         return RetentionClass::Class0Ephemeral;
     }
 

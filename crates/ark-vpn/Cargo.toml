@@ -5,3 +5,22 @@ edition = "2021"
 
 [dependencies]
 ark-core = { path = "../ark-core" }
+ark-crypto = { path = "../ark-crypto" }
+ark-protocol = { path = "../ark-protocol" }
+bytes = "1.12"
+bytemuck = { version = "1.16", features = ["derive"] }
+sha3 = "0.10"
+thiserror = "1.0"
+async-trait = "0.1"
+tokio = { version = "1.39", features = ["sync", "rt", "macros", "time"] }
+tracing = "0.1"
+libc = "0.2"
+rand_core = "0.6"
+ark-time = { path = "../ark-time" }
+
+[dev-dependencies]
+tokio = { version = "1.39", features = ["macros", "rt-multi-thread"] }
+rand = "0.8"
+rand_chacha = "0.3"
+tempfile = "3.8"
+ark-storage = { path = "../ark-storage" }

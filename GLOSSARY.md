@@ -141,4 +141,29 @@ An asynchronous, causally ordered job bus persisted in `ark-storage` (Fjall LSM)
 ### Ark Cron
 A deterministic, event-driven scheduler that triggers recurrent guest Wasm worker invocations based on peer consensus time (Peer-Median-Time / PMT) rather than local wall-clock time, strictly skipping missed intervals upon reconnect to prevent execution bursts.
 
+## Sovereign P2P Overlay Mesh & Tunneling (ACP-07)
+
+### Virtual Tun Adapter
+An abstraction layer for Layer-3 IP packet capture and injection, operating via native OS TUN interfaces (`ark0`) with platform fallback to unprivileged user-space packet loopback and test harnesses.
+
+### Sovereign IPAM (Deterministic Dual-Stack)
+An identity-bound addressing scheme where every node deterministically derives its IPv6 Unique Local Address (`fd00::/8`) directly from its 32-byte `ArkID` (`SHA3-256(PublicKey)`), accompanied by an optional deterministic local IPv4 CGNAT alias (`100.64.0.0/10`) without centralized DHCP coordination.
+
+### Post-Quantum Mesh Tunneling (PQMT)
+End-to-end encrypted packet encapsulation leveraging the native ARK protocol stack (FIPS 203 ML-KEM-768 key encapsulation + FIPS 206 FN-DSA-512 signatures + ChaCha20-Poly1305 / AES-GCM data channels) wrapped inside authenticated `ArkEnvelope` containers over ALPN `ark-pqc/v1`.
+
+### Ephemeral VPN Envelope (Retention Class 0)
+Dedicated transient envelope kinds (`KIND_VPN_DATA = 0x0008` and `KIND_VPN_HANDSHAKE = 0x0009`) processed strictly in-memory (Retention Class 0) without disk persistence in the Fjall LSM, dispatched at line speed to the virtual TUN adapter.
+
+### Zero-Trust Mesh ACL
+A fine-grained microsegmentation policy (`VpnSecurityPolicy`) governing inter-node packet flow via declarative `(source_ark_id, destination_port, protocol, action)` rules, enforcing intra-cluster convenience with default-deny quarantine for external peers.
+
+### Seamless Endpoint Roaming
+A cryptographic connection migration mechanism updating a peer's physical socket address `(IP:port)` dynamically upon receiving valid, authenticated envelopes with matched `SenderKeyID` and non-replayed sequence counters across network switches (e.g., Wi-Fi to cellular).
+
+### Sovereign Relay Fallback (DERP-style)
+A zero-trust, end-to-end encrypted packet relaying mechanism used when direct UDP hole-punching / ICE traversal fails across symmetric NAT or firewall boundaries, allowing traffic forwarding via authenticated Homelab guardians without exposing plaintext.
+
+
+
 
