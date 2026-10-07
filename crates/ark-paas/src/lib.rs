@@ -1,13 +1,18 @@
-//! [AEP-01] ark-paas: Sovereign Sandboxed Compute & Execution Engine
-//!
-//! Provides WebAssembly sandboxed runtime (Wasmtime) for `wasm32-unknown-unknown`
-//! modules with deterministic dual-pool fuel metering (CPU fuel and I/O fuel),
-//! strict memory ceilings (64 MB via StoreLimitsBuilder), and epoch deadline timers.
-
 pub mod error;
+pub mod traits;
+pub mod host_abi;
 pub mod worker;
 
 pub use error::{PaasError, Result};
+pub use host_abi::{
+    HostAbiState, DEFAULT_IO_FUEL_BYTES,
+    register_host_abi,
+};
+pub use traits::{
+    BlobReaderBackend, EnvelopeEmitterBackend, InMemoryBlobReader,
+    InMemoryEnvelopeEmitter, InMemoryKvStore, InMemoryPmtClock,
+    KvStoreBackend, PmtClockBackend,
+};
 pub use worker::{
     WasmWorker, WasmWorkerConfig, WorkerStoreData, DEFAULT_CPU_FUEL, DEFAULT_EPOCH_TICKS,
     DEFAULT_MEMORY_LIMIT_BYTES,
