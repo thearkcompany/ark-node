@@ -1,4 +1,5 @@
 use crate::error::{PaasError, Result};
+use crate::host_abi::{register_host_abi, HostAbiState, DEFAULT_IO_FUEL_BYTES};
 use wasmtime::{
     Config, Engine, Instance, Linker, Module, ResourceLimiter, Store, StoreLimits,
     StoreLimitsBuilder, Trap,
@@ -14,12 +15,14 @@ pub const DEFAULT_CPU_FUEL: u64 = 10_000_000;
 pub const DEFAULT_EPOCH_TICKS: u64 = 1;
 
 /// Configuration for the sandboxed WasmWorker runtime.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct WasmWorkerConfig {
     /// Maximum linear memory allocation ceiling in bytes.
     pub memory_limit_bytes: usize,
     /// Maximum initial CPU fuel units metered deterministically.
     pub initial_cpu_fuel: u64,
+    /// Maximum initial I/O fuel budget in bytes.
+    pub initial_io_fuel: usize,
     /// Whether epoch deadline interruption is enabled.
     pub enable_epoch_interruption: bool,
     /// Preemptive epoch deadline ticks budget before interruption trap.
@@ -31,17 +34,19 @@ impl Default for WasmWorkerConfig {
         Self {
             memory_limit_bytes: DEFAULT_MEMORY_LIMIT_BYTES,
             initial_cpu_fuel: DEFAULT_CPU_FUEL,
+            initial_io_fuel: DEFAULT_IO_FUEL_BYTES,
             enable_epoch_interruption: true,
             epoch_deadline_ticks: DEFAULT_EPOCH_TICKS,
         }
     }
 }
 
-/// Internal store data containing resource limiter and execution metadata.
+/// Internal store data containing resource limiter, Host-ABI state, and execution metadata.
 pub struct WorkerStoreData {
     pub limits: StoreLimits,
     pub memory_limit_bytes: usize,
     pub memory_limit_hit: bool,
+    pub abi_state: HostAbiState,
 }
 
 impl ResourceLimiter for WorkerStoreData {
@@ -128,16 +133,34 @@ impl WasmWorker {
         self.engine.increment_epoch();
     }
 
-    /// Build a new Store configured with memory limits and fuel.
-    fn create_store(&self) -> Result<Store<WorkerStoreData>> {
+    /// Build a new Store configured with memory limits, fuel, and initial HostAbiState.
+    pub fn create_store(&self, abi_state: Option<HostAbiState>) -> Result<Store<WorkerStoreData>> {
         let limits = StoreLimitsBuilder::new()
             .memory_size(self.config.memory_limit_bytes)
             .build();
+
+        let state = match abi_state {
+            Some(mut s) => {
+                // If caller didn't override fuel limit, use config limit
+                if s.io_fuel_limit == DEFAULT_IO_FUEL_BYTES && self.config.initial_io_fuel != DEFAULT_IO_FUEL_BYTES {
+                    s.io_fuel_limit = self.config.initial_io_fuel;
+                    s.io_fuel_remaining = self.config.initial_io_fuel;
+                }
+                s
+            }
+            None => {
+                let mut s = HostAbiState::default();
+                s.io_fuel_limit = self.config.initial_io_fuel;
+                s.io_fuel_remaining = self.config.initial_io_fuel;
+                s
+            }
+        };
 
         let data = WorkerStoreData {
             limits,
             memory_limit_bytes: self.config.memory_limit_bytes,
             memory_limit_hit: false,
+            abi_state: state,
         };
 
         let mut store = Store::new(&self.engine, data);
@@ -156,11 +179,18 @@ impl WasmWorker {
         Ok(store)
     }
 
+    /// Build a Linker with Host-ABI registered.
+    pub fn create_linker(&self) -> Result<Linker<WorkerStoreData>> {
+        let mut linker = Linker::new(&self.engine);
+        register_host_abi(&mut linker)?;
+        Ok(linker)
+    }
+
     /// Execute a nullary exported function returning an i32 (or no return / arbitrary).
     /// Returns the remaining fuel upon successful completion.
     pub fn call_simple(&self, func_name: &str) -> Result<(i32, u64)> {
-        let mut store = self.create_store()?;
-        let linker = Linker::new(&self.engine);
+        let mut store = self.create_store(None)?;
+        let linker = self.create_linker()?;
 
         let instance = linker
             .instantiate(&mut store, &self.module)
@@ -183,8 +213,16 @@ impl WasmWorker {
     where
         F: FnOnce(&mut Store<WorkerStoreData>, Instance) -> std::result::Result<R, wasmtime::Error>,
     {
-        let mut store = self.create_store()?;
-        let linker = Linker::new(&self.engine);
+        self.execute_with_state(None, f)
+    }
+
+    /// Instantiate and execute with custom HostAbiState.
+    pub fn execute_with_state<F, R>(&self, abi_state: Option<HostAbiState>, f: F) -> Result<R>
+    where
+        F: FnOnce(&mut Store<WorkerStoreData>, Instance) -> std::result::Result<R, wasmtime::Error>,
+    {
+        let mut store = self.create_store(abi_state)?;
+        let linker = self.create_linker()?;
 
         let instance = linker
             .instantiate(&mut store, &self.module)
@@ -225,7 +263,19 @@ impl WasmWorker {
             }
         }
 
-        let err_str = err.to_string();
+        // Check if err or its sources contain PaasError
+        for cause in err.chain() {
+            if let Some(paas_err) = cause.downcast_ref::<PaasError>() {
+                return paas_err.clone();
+            }
+        }
+
+        let err_str = format!("{err:?}");
+        if err_str.contains("I/O fuel exhausted") || err_str.contains("IoFuelExhausted") {
+            return PaasError::IoFuelExhausted {
+                limit_bytes: store.data().abi_state.io_fuel_limit,
+            };
+        }
         if err_str.contains("fuel") || err_str.contains("all fuel consumed") {
             return PaasError::CpuFuelExhausted;
         }
