@@ -59,6 +59,9 @@ pub enum BlobError {
     #[error("Proof serialization error: {0}")]
     SerializationError(String),
 
+    #[error("Missing expected tag: {0:#06x}")]
+    MissingTag(u32),
+
     #[error("I/O error: {0}")]
     Io(String),
 }

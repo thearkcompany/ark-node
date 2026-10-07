@@ -106,22 +106,24 @@ pub fn compute_single_shard_root(shard: &[u8]) -> Result<[u8; 32]> {
     Ok(compute_merkle_root(&leaves))
 }
 
+use serde::{Deserialize, Serialize};
+
 /// Direction of a sibling node in a Merkle audit path.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SiblingPosition {
     Left,
     Right,
 }
 
 /// A step in the Merkle audit path.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MerkleProofNode {
     pub hash: [u8; 32],
     pub position: SiblingPosition,
 }
 
 /// Shard Merkle inclusion proof for a 4 KB sub-block within a 1 MB shard.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ShardMerkleProof {
     pub shard_index: u32,
     pub sub_block_index: u32,
