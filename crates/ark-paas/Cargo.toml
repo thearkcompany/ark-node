@@ -5,3 +5,16 @@ edition = "2021"
 
 [dependencies]
 ark-core = { path = "../ark-core" }
+ark-protocol = { path = "../ark-protocol" }
+ark-storage = { path = "../ark-storage" }
+dashmap = "6.2"
+parking_lot = "0.12"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha3 = "0.10"
+thiserror = "1.0"
+tokio = { version = "1.38", features = ["sync", "time", "rt-multi-thread", "macros"], optional = true }
+
+[dev-dependencies]
+tempfile = "3.27"
+tokio = { version = "1.38", features = ["sync", "time", "rt-multi-thread", "macros"] }

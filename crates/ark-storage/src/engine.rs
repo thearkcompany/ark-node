@@ -484,6 +484,11 @@ impl StorageEngine {
         self.db.keyspace_count()
     }
 
+    /// Access the underlying Fjall Database instance to create or access subsystem-specific keyspaces.
+    pub fn db(&self) -> &Database {
+        &self.db
+    }
+
     /// Spawns a background worker thread that periodically invokes `sweep_expired`.
     pub fn spawn_background_sweeper(
         engine: std::sync::Arc<Self>,
