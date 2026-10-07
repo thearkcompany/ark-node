@@ -6,6 +6,7 @@
 //! alongside Ark Queue (Fjall LSM with in-memory ACK elision), Capability Host-ABI,
 //! and Ark Cron (PMT-driven).
 
+pub mod cron;
 pub mod error;
 pub mod host_abi;
 pub mod lease;
@@ -13,6 +14,7 @@ pub mod queue;
 pub mod traits;
 pub mod worker;
 
+pub use cron::{ArkCron, CronJob, CronSchedule, MockPmtClock, PmtClock, UtcDateTime};
 pub use error::{ArkQueueError, PaasError, QueueResult, Result};
 pub use host_abi::{register_host_abi, HostAbiState, DEFAULT_IO_FUEL_BYTES};
 pub use lease::JobLease;
