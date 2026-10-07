@@ -57,13 +57,16 @@ pub fn classify_retention(envelope: &ArkEnvelope) -> RetentionClass {
         return RetentionClass::Class4BoundedTtl;
     }
 
-    // 3. Class 3: TAG_PARAM_D or kind 30000..40000
-    if envelope.tags.iter().any(|t| t.tag_type == TAG_PARAM_D) || (30000..40000).contains(&kind) {
+    // 3. Class 3: TAG_PARAM_D, kind in 30000..40000, or KIND_WOT_ATTESTATION (0x000A)
+    if envelope.tags.iter().any(|t| t.tag_type == TAG_PARAM_D)
+        || (30000..40000).contains(&kind)
+        || kind == 0x000A
+    {
         return RetentionClass::Class3ParamReplaceable;
     }
 
-    // 3b. Class 1: 0x1000_0000..0x2000_0000 (e.g. KIND_BLOB_MANIFEST 0x1000_0003)
-    if (0x1000_0000..0x2000_0000).contains(&kind) {
+    // 3b. Class 1: 0x1000_0000..0x2000_0000 (e.g. KIND_BLOB_MANIFEST 0x1000_0003) or KIND_WOT_REVOCATION (0x000B)
+    if (0x1000_0000..0x2000_0000).contains(&kind) || kind == 0x000B {
         return RetentionClass::Class1AppendOnly;
     }
 

@@ -1,17 +1,13 @@
-//! [Preparação para v1.0] Web-of-Trust e QoS Trust Scores.
+//! ark-wot: Sovereign Web-of-Trust Sybil Resistance & Reputation (ACP-04).
 
-pub struct WebOfTrust {
-    // Trust graph and scoring state
-}
+pub mod crypto;
+pub mod temporal;
+pub mod graph;
+pub mod store;
+pub mod engine;
 
-impl WebOfTrust {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
-impl Default for WebOfTrust {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+pub use crypto::*;
+pub use temporal::*;
+pub use graph::*;
+pub use store::*;
+pub use engine::*;

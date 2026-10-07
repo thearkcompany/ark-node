@@ -164,6 +164,22 @@ A cryptographic connection migration mechanism updating a peer's physical socket
 ### Sovereign Relay Fallback (DERP-style)
 A zero-trust, end-to-end encrypted packet relaying mechanism used when direct UDP hole-punching / ICE traversal fails across symmetric NAT or firewall boundaries, allowing traffic forwarding via authenticated Homelab guardians without exposing plaintext.
 
+## Web-of-Trust Sybil Resistance & Reputation (ACP-04)
 
+### Local Trust Graph
+A subjective, directed weighted graph rooted at the local node's `ArkID`. Rather than seeking global consensus on identity reputations, each sovereign node independently evaluates transitive trust paths over received cryptographic attestations using Personalized PageRank (PPR) or bounded transitive decay walks.
 
+### Trust Attestation
+A cryptographically signed, verifiable statement (`KIND_WOT_ATTESTATION = 0x000A`) wherein an issuer identity (`issuer_id`) certifies confidence in a subject identity (`subject_id`) with a normalized confidence weight, capability scopes, and PMT-bound validity window, signed using FIPS 206 FN-DSA-512.
 
+### Personalized Trust Evaluation
+The deterministic algorithm computing the trust score $S \in [0.0, 1.0]$ and topological hop distance $d \in \mathbb{N}$ of a target `ArkID` relative to the evaluating node's local trust root, immune to Sybil collusion rings outside the evaluator's transitive frontier.
+
+### Trust Decay
+The continuous temporal attenuation of attestation weights based on elapsed Peer-Median-Time (PMT), modeled via an exponential half-life decay function unless refreshed by updated attestations.
+
+### Active Trust Revocation
+An instantaneous, prioritized cryptographic invalidation (`KIND_WOT_REVOCATION = 0x000B`) emitted by an attestation issuer that nullifies previously issued attestations and truncates transitive paths across the local trust graph.
+
+### Trust Tier
+A discrete classification (`CorePeer`, `Trusted`, `Probationary`, `Untrusted`) derived from the numerical trust score and path distance, utilized across protocol layers (`ark-vpn`, `ark-blob`, `ark-dns`, `ark-paas`) to enforce rate limits, admission quotas, bandwidth prioritization, and zero-trust ACL defaults.
