@@ -1,5 +1,4 @@
-//! Sovereign DNS (.ark) subsystem implementing GCP-08 and ACP-0008.
-
+pub mod anti_sybil;
 pub mod crypto_name;
 pub mod error;
 pub mod overlay;
@@ -9,6 +8,11 @@ pub mod trie;
 use std::sync::Arc;
 use arc_swap::ArcSwap;
 
+pub use anti_sybil::{
+    count_leading_zero_bits, has_16_leading_zero_bits, validate_dns_claim, validate_fqdn,
+    L2ContractVerifier, ValidatedDnsClaim, KIND_DNS_CLAIM_PUBLIC, SOVEREIGN_DNS_SUFFIX,
+    TAG_DNS_LEASE_EPOCH, TAG_L2_CONTRACT, TAG_NONCE, TAG_PARAM_D,
+};
 pub use crypto_name::{
     derive_identity_hash, format_cryptographic_name, format_cryptographic_name_from_hash,
     is_cryptographic_name, parse_cryptographic_name, verify_cryptographic_name,
