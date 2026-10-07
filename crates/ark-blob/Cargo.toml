@@ -5,3 +5,5 @@ edition = "2021"
 
 [dependencies]
 ark-core = { path = "../ark-core" }
+sha3 = "0.10"
+thiserror = "1.0"
