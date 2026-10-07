@@ -5,10 +5,10 @@ pub mod engine;
 pub mod error;
 pub mod retention;
 
-pub use fjall::{Database, Keyspace};
 pub use config::StorageConfig;
 pub use engine::{compute_envelope_id, BackgroundSweeperHandle, StorageEngine};
 pub use error::{ArkStorageError, Result};
+pub use fjall::{Database, Keyspace, KeyspaceCreateOptions, PersistMode};
 pub use retention::{
     classify_retention, get_envelope_expiration, get_envelope_kind, get_envelope_param_d,
     RetentionClass, RetentionOutcome, TAG_EXPIRATION, TAG_PARAM_D,

@@ -491,7 +491,12 @@ impl StorageEngine {
             .map_err(|e| ArkStorageError::Database(e.to_string()))
     }
 
-    /// Underlying database reference.
+    /// Access the underlying Fjall Database instance to create or access subsystem-specific keyspaces.
+    pub fn db(&self) -> &Database {
+        &self.db
+    }
+
+    /// Underlying database reference (alias for `db`).
     pub fn database(&self) -> &Database {
         &self.db
     }

@@ -124,4 +124,21 @@ A client-side safety mechanism physically prohibiting a local node or mobile app
 ### Proof-of-Retrievability (PoR)
 A compact audit protocol (`KIND_DEPIN_CHALLENGE`) allowing verifiers to confirm storage keeper possession of a $1\text{ MB}$ shard by challenging a pseudo-randomly sampled $4\text{ KB}$ sub-block salted with `TAG_CHALLENGE_SEED` and verified via KMAC256 and Merkle inclusion paths without downloading the shard.
 
+## Sovereign Compute & Execution Engine (AEP-01)
+
+### Ark Worker
+A sandboxed guest execution environment hosting compiled WebAssembly binaries (`wasm32-unknown-unknown`) powered by Wasmtime, executing deterministically without direct OS network or arbitrary filesystem access.
+
+### Dual-Pool Fuel Metering
+A deterministic resource accounting mechanism enforcing isolated quotas for CPU execution (`CpuFuel`, instruction count bounded via Wasmtime fuel) and host interaction (`IoFuel`, byte limit on KV, blob, and envelope I/O), producing explicit `CpuFuelExhausted` and `IoFuelExhausted` traps.
+
+### Ark Host-ABI
+A capability-based C-compatible interface (`ark_host_*`) exported by the host to Wasm guests over guest-managed linear memory (`ark_alloc`/`ark_dealloc`), exposing hermetic primitives for KV storage (`ark-storage`), CRDT consistency (`ark-crdt`), blob retrieval (`ark-blob`), envelope emissions, and temporal queries.
+
+### Ark Queue
+An asynchronous, causally ordered job bus persisted in `ark-storage` (Fjall LSM) featuring in-memory acknowledgment (ACK) elision: successful executions complete within a bounded `JobLease` without synchronous disk writes, while unacknowledged tasks survive node crashes for at-least-once delivery.
+
+### Ark Cron
+A deterministic, event-driven scheduler that triggers recurrent guest Wasm worker invocations based on peer consensus time (Peer-Median-Time / PMT) rather than local wall-clock time, strictly skipping missed intervals upon reconnect to prevent execution bursts.
+
 
