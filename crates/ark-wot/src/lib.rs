@@ -4,8 +4,10 @@ pub mod crypto;
 pub mod temporal;
 pub mod graph;
 pub mod store;
+pub mod engine;
 
 pub use crypto::*;
 pub use temporal::*;
 pub use graph::*;
 pub use store::*;
+pub use engine::*;
