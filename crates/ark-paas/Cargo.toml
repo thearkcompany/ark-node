@@ -5,3 +5,9 @@ edition = "2021"
 
 [dependencies]
 ark-core = { path = "../ark-core" }
+wasmtime = "25.0.3"
+thiserror = "1.0"
+tracing = "0.1"
+
+[dev-dependencies]
+wat = "1.221"
