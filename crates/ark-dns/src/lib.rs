@@ -5,7 +5,10 @@ pub mod error;
 pub mod lifecycle;
 pub mod overlay;
 pub mod record;
+pub mod resolver;
+pub mod synthesis;
 pub mod trie;
+pub mod wire;
 
 use std::sync::Arc;
 use arc_swap::ArcSwap;
@@ -27,7 +30,13 @@ pub use lifecycle::{
 };
 pub use overlay::{OverlayRecord, PrivateOverlayStore, DNS_PRIVATE_OVERLAYS_KEYSPACE};
 pub use record::DomainRoutingRecord;
+pub use resolver::{StubResolver, StubResolverConfig, DEFAULT_DNS_BIND_ADDR, DEFAULT_DNS_TTL_SECS};
+pub use synthesis::synthesize_dns_answers;
 pub use trie::{CompressedPatriciaTrie, MerkleProof, MerkleProofStep};
+pub use wire::{
+    DnsClass, DnsHeader, DnsMessage, DnsOpcode, DnsQuestion, DnsRcode, DnsRecord, DnsRecordData,
+    DnsRecordType,
+};
 
 /// Thread-safe, lock-free Sovereign DNS Trie container.
 ///
