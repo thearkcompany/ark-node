@@ -54,6 +54,7 @@ pub struct StubResolver<T: TimeProvider + 'static, V: L2ContractVerifier + 'stat
     engine: Arc<SovereignDnsEngine<T, V>>,
     config: StubResolverConfig,
     socket: Arc<UdpSocket>,
+    forwarder_socket: Option<Arc<UdpSocket>>,
 }
 
 impl<T: TimeProvider, V: L2ContractVerifier> StubResolver<T, V> {
@@ -68,10 +69,20 @@ impl<T: TimeProvider, V: L2ContractVerifier> StubResolver<T, V> {
 
         info!("StubResolver bound to UDP {}", socket.local_addr().map_err(|e| DnsError::Serialization(e.to_string()))?);
 
+        let forwarder_socket = if config.upstream_dns.is_some() {
+            let fwd = UdpSocket::bind("127.0.0.1:0")
+                .await
+                .map_err(|e| DnsError::Serialization(format!("Failed to bind forwarding socket: {}", e)))?;
+            Some(Arc::new(fwd))
+        } else {
+            None
+        };
+
         Ok(Self {
             engine,
             config,
             socket: Arc::new(socket),
+            forwarder_socket,
         })
     }
 
@@ -188,14 +199,22 @@ impl<T: TimeProvider, V: L2ContractVerifier> StubResolver<T, V> {
 
             match self.engine.resolve(&qname, None) {
                 Ok(resolve_response) => {
-                    let answers = synthesize_dns_answers(
-                        &question.qname,
-                        question.qtype,
-                        &resolve_response,
-                        self.config.default_ttl,
-                    );
-                    resp.answers = answers;
-                    Ok(Some(resp.to_wire()?))
+                    // External resolution suspension during Grace Period:
+                    // If the domain is quarantined in grace period, return NXDOMAIN
+                    // so external OS resolvers don't connect to suspended / quarantined hosts.
+                    if resolve_response.in_grace_period {
+                        resp.header.rcode = DnsRcode::NameError; // NXDOMAIN
+                        Ok(Some(resp.to_wire()?))
+                    } else {
+                        let answers = synthesize_dns_answers(
+                            &question.qname,
+                            question.qtype,
+                            &resolve_response,
+                            self.config.default_ttl,
+                        );
+                        resp.answers = answers;
+                        Ok(Some(resp.to_wire()?))
+                    }
                 }
                 Err(DnsError::NotFound(_)) => {
                     resp.header.rcode = DnsRcode::NameError; // NXDOMAIN
@@ -232,9 +251,15 @@ impl<T: TimeProvider, V: L2ContractVerifier> StubResolver<T, V> {
 
     /// Forward raw DNS query to configured upstream resolver over UDP.
     async fn forward_to_upstream(&self, packet_data: &[u8], upstream_addr: SocketAddr) -> Result<Vec<u8>> {
-        let forwarder = UdpSocket::bind("127.0.0.1:0")
-            .await
-            .map_err(|e| DnsError::Serialization(format!("Failed to bind forwarding socket: {}", e)))?;
+        let forwarder = match &self.forwarder_socket {
+            Some(sock) => sock.clone(),
+            None => {
+                let sock = UdpSocket::bind("127.0.0.1:0")
+                    .await
+                    .map_err(|e| DnsError::Serialization(format!("Failed to bind forwarding socket: {}", e)))?;
+                Arc::new(sock)
+            }
+        };
 
         forwarder
             .send_to(packet_data, upstream_addr)

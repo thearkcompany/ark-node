@@ -10,6 +10,9 @@ use std::sync::Arc;
 use sha3::{Digest, Sha3_256};
 use crate::record::DomainRoutingRecord;
 
+/// Maximum size in bytes for a serialized Merkle inclusion proof.
+pub const MAX_MERKLE_PROOF_SIZE: usize = 256;
+
 /// A compact Merkle inclusion proof demonstrating the existence of a domain record
 /// within the Patricia Trie root.
 /// Serialized size is strictly bounded (<= 256 bytes for typical and deep domain trees).
@@ -49,6 +52,7 @@ impl MerkleProof {
     }
 
     /// Encode MerkleProof to compact binary format.
+    /// Returns the serialized bytes, ensuring size does not exceed `MAX_MERKLE_PROOF_SIZE` (256 bytes).
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(self.encoded_size());
         let fqdn_bytes = self.fqdn.as_bytes();
@@ -73,6 +77,12 @@ impl MerkleProof {
                 }
             }
         }
+        debug_assert!(
+            buf.len() <= MAX_MERKLE_PROOF_SIZE,
+            "MerkleProof::to_bytes() exceeded maximum bound of {} bytes (actual: {} bytes)",
+            MAX_MERKLE_PROOF_SIZE,
+            buf.len()
+        );
         buf
     }
 

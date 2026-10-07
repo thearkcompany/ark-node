@@ -323,3 +323,85 @@ async fn test_resolver_cryptographic_name_query() {
 
     server_handle.abort();
 }
+
+#[tokio::test]
+async fn test_resolver_grace_period_returns_nxdomain() {
+    let dir = tempdir().unwrap();
+    let storage = StorageEngine::open(dir.path(), StorageConfig::frugal()).unwrap();
+    let clock = Arc::new(MockTimeProvider::new(1_000_000));
+    let verifier = Arc::new(DummyL2Verifier);
+    let owner_key = [0x77u8; 16];
+
+    let engine = SovereignDnsEngine::builder()
+        .storage(storage)
+        .time_provider(clock.clone())
+        .l2_verifier(verifier)
+        .build()
+        .unwrap();
+
+    let lease_epoch = 1_000_000 + 1000;
+    // Register public domain
+    let claim = ark_dns::anti_sybil::ValidatedDnsClaim {
+        fqdn: "quarantined.ark".to_string(),
+        lease_epoch,
+        contract_id: b"escrow-contract-001".to_vec(),
+        owner_key_id: owner_key,
+        envelope_id: [0u8; 32],
+    };
+    engine.lifecycle_engine().register_claim(
+        &claim,
+        [0u8; 32],
+        vec!["192.168.1.50".to_string()],
+        vec![],
+    ).unwrap();
+
+    // Bind resolver
+    let config = StubResolverConfig {
+        bind_addr: "127.0.0.1:0".parse().unwrap(),
+        upstream_dns: None,
+        default_ttl: 60,
+    };
+    let resolver = StubResolver::new(Arc::new(engine), config).await.unwrap();
+    let server_addr = resolver.local_addr().unwrap();
+
+    let server_handle = tokio::spawn(async move {
+        let _ = resolver.run().await;
+    });
+
+    let client_sock = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+
+    // 1. While Active: resolves normally to NoError with A record
+    let mut query = DnsMessage::new_response(0x5555, DnsRcode::NoError);
+    query.header.is_response = false;
+    query.questions.push(DnsQuestion {
+        qname: "quarantined.ark".to_string(),
+        qtype: DnsRecordType::A,
+        qclass: DnsClass::IN,
+    });
+    client_sock.send_to(&query.to_wire().unwrap(), server_addr).await.unwrap();
+
+    let mut buf = vec![0u8; 1024];
+    let (n, _) = client_sock.recv_from(&mut buf).await.unwrap();
+    let resp = DnsMessage::from_wire(&buf[..n]).unwrap();
+    assert_eq!(resp.header.rcode, DnsRcode::NoError);
+    assert_eq!(resp.answers.len(), 1);
+
+    // 2. Advance clock into 14-day Grace Period: external resolution suspended -> NXDOMAIN
+    clock.set_time(lease_epoch + 100);
+
+    let mut query2 = DnsMessage::new_response(0x6666, DnsRcode::NoError);
+    query2.header.is_response = false;
+    query2.questions.push(DnsQuestion {
+        qname: "quarantined.ark".to_string(),
+        qtype: DnsRecordType::A,
+        qclass: DnsClass::IN,
+    });
+    client_sock.send_to(&query2.to_wire().unwrap(), server_addr).await.unwrap();
+
+    let (n2, _) = client_sock.recv_from(&mut buf).await.unwrap();
+    let resp2 = DnsMessage::from_wire(&buf[..n2]).unwrap();
+    assert_eq!(resp2.header.rcode, DnsRcode::NameError); // NXDOMAIN
+    assert!(resp2.answers.is_empty());
+
+    server_handle.abort();
+}

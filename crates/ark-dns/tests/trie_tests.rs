@@ -205,8 +205,14 @@ fn test_merkle_proof_generation_and_verification() {
             serialized_len
         );
 
-        // Binary serialization roundtrip
+        // Binary serialization roundtrip & size bound check
         let proof_bytes = proof.to_bytes();
+        assert!(
+            proof_bytes.len() <= ark_dns::trie::MAX_MERKLE_PROOF_SIZE,
+            "MerkleProof::to_bytes() produced {} bytes (> {} bytes)",
+            proof_bytes.len(),
+            ark_dns::trie::MAX_MERKLE_PROOF_SIZE
+        );
         let decoded_proof = MerkleProof::from_bytes(&proof_bytes).expect("decoding proof succeeds");
         assert_eq!(decoded_proof, proof);
         assert!(decoded_proof.verify(&root, r));

@@ -22,6 +22,9 @@ pub enum DnsError {
     #[error("Invalid record data: {0}")]
     InvalidRecord(String),
 
+    #[error("Invalid cryptographic signature: {0}")]
+    InvalidSignature(String),
+
     #[error("Storage error: {0}")]
     Storage(#[from] ark_storage::ArkStorageError),
 

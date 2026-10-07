@@ -276,6 +276,26 @@ pub fn validate_dns_claim<V: L2ContractVerifier + ?Sized>(
         )));
     }
 
+    // 7. Verify cryptographic signature if envelope contains a public key or signature
+    // Check if a full FN-DSA-512 public key is carried in TAG_PARAM_D/TAG_PUBLIC_KEY (e.g. tag 0x0002)
+    // or if the envelope signature is present and can be verified against a key matching owner_key_id.
+    let pubkey_tag = envelope.tags.iter().find(|t| t.tag_type == 0x0002 || t.tag_type == 0x0001);
+    if let Some(pk_tag) = pubkey_tag {
+        if !envelope.signature.is_empty() {
+            // Check that pubkey hash matches owner_key_id (first 16 bytes of SHA3-256(pubkey))
+            let derived_id = ark_crypto::Identity::from_public_key(&pk_tag.tag_value);
+            if derived_id.sender_key_id != owner_key_id {
+                return Err(DnsError::InvalidSignature(
+                    "Public key tag does not match envelope owner_key_id".to_string(),
+                ));
+            }
+
+            let canonical_id = ark_protocol::hashing::calculate_canonical_id(envelope);
+            ark_crypto::fn_dsa::verify_fn_dsa_512(&pk_tag.tag_value, &canonical_id, &envelope.signature)
+                .map_err(|e| DnsError::InvalidSignature(format!("FN-DSA-512 signature check failed: {}", e)))?;
+        }
+    }
+
     Ok(ValidatedDnsClaim {
         fqdn,
         lease_epoch,

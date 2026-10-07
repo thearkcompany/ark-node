@@ -10,21 +10,17 @@ use ark_protocol::proto::DomainResolveResponse;
 
 use crate::wire::{DnsClass, DnsRecord, DnsRecordData, DnsRecordType};
 
-/// Extract IPv4 address from string if present.
-pub fn extract_ipv4(addr_str: &str) -> Option<Ipv4Addr> {
+/// Parse an IP address of type `T` from a raw IP string or a multiaddr path (e.g. `/<proto>/<ip>/...`).
+fn parse_ip_or_multiaddr<T: std::str::FromStr>(addr_str: &str, proto_prefix: &str) -> Option<T> {
     let trimmed = addr_str.trim();
-    if let Ok(ip) = trimmed.parse::<Ipv4Addr>() {
-        return Some(ip);
-    }
-    if let Ok(IpAddr::V4(ip)) = trimmed.parse::<IpAddr>() {
+    if let Ok(ip) = trimmed.parse::<T>() {
         return Some(ip);
     }
 
-    // Try multiaddr format: /ip4/<ip>/...
-    if trimmed.starts_with("/ip4/") {
+    if trimmed.starts_with(proto_prefix) {
         let parts: Vec<&str> = trimmed.split('/').collect();
         if parts.len() > 2 {
-            if let Ok(ip) = parts[2].parse::<Ipv4Addr>() {
+            if let Ok(ip) = parts[2].parse::<T>() {
                 return Some(ip);
             }
         }
@@ -33,26 +29,25 @@ pub fn extract_ipv4(addr_str: &str) -> Option<Ipv4Addr> {
     None
 }
 
+/// Extract IPv4 address from string if present.
+pub fn extract_ipv4(addr_str: &str) -> Option<Ipv4Addr> {
+    if let Some(ip4) = parse_ip_or_multiaddr::<Ipv4Addr>(addr_str, "/ip4/") {
+        return Some(ip4);
+    }
+    if let Ok(IpAddr::V4(ip)) = addr_str.trim().parse::<IpAddr>() {
+        return Some(ip);
+    }
+    None
+}
+
 /// Extract IPv6 address from string if present.
 pub fn extract_ipv6(addr_str: &str) -> Option<Ipv6Addr> {
-    let trimmed = addr_str.trim();
-    if let Ok(ip) = trimmed.parse::<Ipv6Addr>() {
+    if let Some(ip6) = parse_ip_or_multiaddr::<Ipv6Addr>(addr_str, "/ip6/") {
+        return Some(ip6);
+    }
+    if let Ok(IpAddr::V6(ip)) = addr_str.trim().parse::<IpAddr>() {
         return Some(ip);
     }
-    if let Ok(IpAddr::V6(ip)) = trimmed.parse::<IpAddr>() {
-        return Some(ip);
-    }
-
-    // Try multiaddr format: /ip6/<ip>/...
-    if trimmed.starts_with("/ip6/") {
-        let parts: Vec<&str> = trimmed.split('/').collect();
-        if parts.len() > 2 {
-            if let Ok(ip) = parts[2].parse::<Ipv6Addr>() {
-                return Some(ip);
-            }
-        }
-    }
-
     None
 }
 

@@ -211,6 +211,12 @@ fn test_tier3_public_patricia_trie_resolution_and_merkle_proof() {
     assert!(!res.in_grace_period);
     assert_eq!(res.ech_public_key, ech_key);
     assert!(!res.merkle_inclusion_proof.is_empty());
+    assert!(
+        res.merkle_inclusion_proof.len() <= ark_dns::trie::MAX_MERKLE_PROOF_SIZE,
+        "Merkle proof size in engine was {} (> {})",
+        res.merkle_inclusion_proof.len(),
+        ark_dns::trie::MAX_MERKLE_PROOF_SIZE
+    );
 
     // Verify Merkle inclusion proof
     let proof = ark_dns::trie::MerkleProof::from_bytes(&res.merkle_inclusion_proof).expect("proof decode");

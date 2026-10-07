@@ -208,12 +208,20 @@ impl<T: TimeProvider, V: L2ContractVerifier> SovereignDnsEngine<T, V> {
 
             let mut offset = 32;
             let routing_addrs = if payload.len() >= offset + 4 {
-                let addrs_len = u32::from_be_bytes(payload[offset..offset + 4].try_into().unwrap()) as usize;
-                offset += 4;
-                if payload.len() >= offset + addrs_len {
-                    let slice = &payload[offset..offset + addrs_len];
-                    offset += addrs_len;
-                    serde_json::from_slice::<Vec<String>>(slice).unwrap_or_default()
+                if let Some(slice_bytes) = payload.get(offset..offset + 4) {
+                    if let Ok(be_arr) = slice_bytes.try_into() {
+                        let addrs_len = u32::from_be_bytes(be_arr) as usize;
+                        offset += 4;
+                        if payload.len() >= offset + addrs_len {
+                            let slice = &payload[offset..offset + addrs_len];
+                            offset += addrs_len;
+                            serde_json::from_slice::<Vec<String>>(slice).unwrap_or_default()
+                        } else {
+                            Vec::new()
+                        }
+                    } else {
+                        Vec::new()
+                    }
                 } else {
                     Vec::new()
                 }

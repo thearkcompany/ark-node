@@ -255,3 +255,69 @@ fn test_constant_time_pow_check() {
     hash[0] = 1;
     assert!(!has_16_leading_zero_bits(&hash));
 }
+
+#[test]
+fn test_signature_verification_on_claim_envelope() {
+    use ark_crypto::fn_dsa::FnDsaKeyPair;
+    use ark_protocol::hashing::calculate_canonical_id;
+    use rand::rngs::OsRng;
+
+    let keypair = FnDsaKeyPair::generate(&mut OsRng);
+    let identity = ark_crypto::Identity::from_public_key(&keypair.public_key);
+    let owner_key_id = identity.sender_key_id;
+    let contract = b"contract-sig-test";
+    let verifier = MockL2Verifier::new().allow(contract, &owner_key_id);
+
+    let mut env = create_valid_claim_envelope("signed.ark", 1_800_000_000, contract, owner_key_id);
+    // Attach public key tag (0x0002)
+    env.tags.push(BinaryTag::new(0x0002, keypair.public_key.to_vec()));
+
+    // Sign canonical ID
+    let canonical_id = calculate_canonical_id(&env);
+    let sig = keypair.sign(&canonical_id).unwrap();
+    env.signature = sig;
+
+    // Mine PoW after adding tags/signature
+    let mut mined = false;
+    for nonce in 0u64..1_000_000 {
+        for tag in &mut env.tags {
+            if tag.tag_type == TAG_NONCE {
+                tag.tag_value = nonce.to_be_bytes().to_vec();
+                break;
+            }
+        }
+        let id = compute_envelope_id(&env).unwrap();
+        if id[0] == 0 && id[1] == 0 {
+            mined = true;
+            break;
+        }
+    }
+    assert!(mined, "PoW mining must succeed");
+
+    // Valid signature must pass
+    let res = validate_dns_claim(&env, &verifier);
+    assert!(res.is_ok(), "Claim with valid FN-DSA signature must pass: {:?}", res);
+
+    // Tampered signature must fail with InvalidSignature
+    let mut tampered_env = env.clone();
+    tampered_env.signature[0] ^= 0xff;
+    // Re-mine PoW so the failure is specifically due to the bad signature and not PoW failure
+    let mut mined_tampered = false;
+    for nonce in 0u64..1_000_000 {
+        for tag in &mut tampered_env.tags {
+            if tag.tag_type == TAG_NONCE {
+                tag.tag_value = nonce.to_be_bytes().to_vec();
+                break;
+            }
+        }
+        let id = compute_envelope_id(&tampered_env).unwrap();
+        if id[0] == 0 && id[1] == 0 {
+            mined_tampered = true;
+            break;
+        }
+    }
+    assert!(mined_tampered, "PoW mining for tampered envelope must succeed");
+
+    let bad_res = validate_dns_claim(&tampered_env, &verifier);
+    assert!(matches!(bad_res, Err(DnsError::InvalidSignature(_))), "Expected InvalidSignature, got {:?}", bad_res);
+}

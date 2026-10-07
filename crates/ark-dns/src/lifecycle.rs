@@ -292,15 +292,15 @@ impl<T: TimeProvider> LeaseLifecycleEngine<T> {
         Ok(())
     }
 
-    /// Convenience method to register a sovereign domain from a `ValidatedDnsClaim`.
-    pub fn register_claim(
+    /// Convert a ValidatedDnsClaim and associated payload data into a DomainRoutingRecord.
+    pub fn claim_to_record(
         &self,
         claim: &crate::anti_sybil::ValidatedDnsClaim,
         target_peer_id: [u8; 32],
         routing_addrs: Vec<String>,
         ech_public_key: Vec<u8>,
-    ) -> Result<()> {
-        let record = DomainRoutingRecord {
+    ) -> DomainRoutingRecord {
+        DomainRoutingRecord {
             fqdn: claim.fqdn.clone(),
             owner_key_id: claim.owner_key_id,
             target_peer_id,
@@ -309,7 +309,18 @@ impl<T: TimeProvider> LeaseLifecycleEngine<T> {
             in_grace_period: false,
             epoch_timestamp: self.time_provider.now_secs(),
             ech_public_key,
-        };
+        }
+    }
+
+    /// Convenience method to register a sovereign domain from a `ValidatedDnsClaim`.
+    pub fn register_claim(
+        &self,
+        claim: &crate::anti_sybil::ValidatedDnsClaim,
+        target_peer_id: [u8; 32],
+        routing_addrs: Vec<String>,
+        ech_public_key: Vec<u8>,
+    ) -> Result<()> {
+        let record = self.claim_to_record(claim, target_peer_id, routing_addrs, ech_public_key);
         self.register(record)
     }
 
@@ -321,16 +332,7 @@ impl<T: TimeProvider> LeaseLifecycleEngine<T> {
         routing_addrs: Vec<String>,
         ech_public_key: Vec<u8>,
     ) -> Result<()> {
-        let record = DomainRoutingRecord {
-            fqdn: claim.fqdn.clone(),
-            owner_key_id: claim.owner_key_id,
-            target_peer_id,
-            routing_addrs,
-            expires_at: claim.lease_epoch,
-            in_grace_period: false,
-            epoch_timestamp: self.time_provider.now_secs(),
-            ech_public_key,
-        };
+        let record = self.claim_to_record(claim, target_peer_id, routing_addrs, ech_public_key);
         self.renew(record)
     }
 
