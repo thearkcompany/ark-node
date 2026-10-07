@@ -10,7 +10,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use ark_core::constants::FAST_HEADER_SIZE;
 use ark_crypto::fn_dsa::{verify_fn_dsa_512, FN_DSA_512_PUBKEY_SIZE, FN_DSA_512_SIGNATURE_SIZE};
 use ark_crypto::identity::PersistentIdentity;
 use ark_crypto::kmac::Kmac256;
@@ -19,7 +18,6 @@ use ark_crypto::ml_kem::{
     ML_KEM_768_SHARED_SECRET_SIZE,
 };
 use ark_protocol::envelope::ArkEnvelope;
-use ark_protocol::tags::{BinaryTag, TAG_MASK_ROUTING};
 use bytes::Bytes;
 use rand_core::CryptoRngCore;
 
@@ -477,6 +475,16 @@ impl PqmtEngine {
         Ok(session_id)
     }
 
+    /// Access a session clone by session ID.
+    pub fn get_session(&self, session_id: u32) -> Option<VpnSession> {
+        self.sessions.read().unwrap().get(&session_id).cloned()
+    }
+
+    /// Insert or update an active session.
+    pub fn insert_session(&self, session: VpnSession) {
+        self.sessions.write().unwrap().insert(session.session_id, session);
+    }
+
     /// Encapsulate an ongoing IP data packet into a low-overhead MicroHeader frame (16B header).
     pub fn frame_data_packet(&self, session_id: u32, ip_packet: &[u8]) -> Result<Bytes> {
         let mut sessions = self.sessions.write().unwrap();
@@ -525,21 +533,14 @@ impl PqmtEngine {
         payload: Vec<u8>,
         timestamp: u64,
     ) -> Result<ArkEnvelope> {
-        let fast_header = [0u8; FAST_HEADER_SIZE];
+        crate::framing::wrap_envelope(self.identity.ark_id, recipient_id, kind, payload, timestamp)
+    }
 
-        let tags = vec![
-            BinaryTag::new(0, kind.to_be_bytes().to_vec()),
-        ];
-
-        ArkEnvelope::new(
-            fast_header,
-            self.identity.ark_id,
-            recipient_id,
-            payload,
-            vec![], // No separate envelope signature needed for ephemeral class 0 data
-            TAG_MASK_ROUTING, // Enforce routing flag -> Class 0 Retention
-            tags,
-            timestamp,
-        ).map_err(|e| VpnError::Crypto(e.to_string()))
+    /// Unwrap an `ArkEnvelope` validating RetentionClass::Class0 and extracting payload.
+    pub fn unwrap_envelope(
+        &self,
+        envelope: &ArkEnvelope,
+    ) -> Result<(u32, [u8; 32], [u8; 32], Vec<u8>)> {
+        crate::framing::unwrap_envelope(envelope)
     }
 }

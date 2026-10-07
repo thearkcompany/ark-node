@@ -167,6 +167,23 @@ fn test_retention_class0_invariant_and_storage_bypass() {
     // Ensure database keyspaces remain empty for persistent classes
     let retrieved_hs = storage.get_envelope(&[0u8; 32]).expect("get failed");
     assert!(retrieved_hs.is_none());
+
+    // Check 3: Unwrap envelopes cleanly extracts kind, sender, recipient, and payload
+    let (kind_hs, sender_hs, recip_hs, payload_hs) = engine
+        .unwrap_envelope(&env_handshake)
+        .expect("unwrap_envelope failed on handshake");
+    assert_eq!(kind_hs, KIND_VPN_HANDSHAKE);
+    assert_eq!(sender_hs, engine.identity().ark_id);
+    assert_eq!(recip_hs, recipient_id);
+    assert_eq!(payload_hs, payload);
+
+    let (kind_data, sender_data, recip_data, payload_data) = engine
+        .unwrap_envelope(&env_data)
+        .expect("unwrap_envelope failed on data");
+    assert_eq!(kind_data, KIND_VPN_DATA);
+    assert_eq!(sender_data, engine.identity().ark_id);
+    assert_eq!(recip_data, recipient_id);
+    assert_eq!(payload_data, payload);
 }
 
 #[test]

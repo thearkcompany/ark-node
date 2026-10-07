@@ -12,12 +12,13 @@ pub use acl::{
     AclEngine, AclVerdict, IpProtocol, VpnAction, VpnAclStats, VpnPeerInfo, VpnSecurityPolicy,
 };
 pub use engine::{
-    RouteMode, VpnEngine, VpnEngineConfig, VpnEngineMetrics, VpnEngineStatus,
+    OutboundPacket, RouteMode, VpnEngine, VpnEngineConfig, VpnEngineMetrics, VpnEngineStatus,
 };
 pub use error::{Result, VpnError};
 pub use framing::{
     deframe_fast_packet, deframe_micro_packet, frame_fast_packet, frame_micro_packet,
-    MicroHeader, KIND_VPN_DATA, KIND_VPN_HANDSHAKE, MICRO_HEADER_SIZE,
+    unwrap_envelope, wrap_envelope, MicroHeader, KIND_VPN_DATA, KIND_VPN_HANDSHAKE,
+    MICRO_HEADER_SIZE,
 };
 pub use ipam::{DeterministicIpam, DualStackAddress};
 pub use pqmt::{HandshakeInit, HandshakeResp, PqmtEngine, VpnSession};

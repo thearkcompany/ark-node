@@ -30,6 +30,15 @@ pub enum RouteMode {
     Relayed,
 }
 
+/// Dispatched outbound encapsulated packet ready for network transmission.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutboundPacket {
+    pub recipient_id: [u8; 32],
+    pub target_endpoint: SocketAddr,
+    pub route_mode: RouteMode,
+    pub payload: Vec<u8>,
+}
+
 /// Operational status of the VPN engine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VpnEngineStatus {
@@ -179,6 +188,180 @@ impl VpnEngine {
         *status = VpnEngineStatus::Starting;
         let _ = self.shutdown_tx.send(false);
         *status = VpnEngineStatus::Running;
+        Ok(())
+    }
+
+    /// Spawn packet pipeline connecting TUN adapter to mesh routing.
+    ///
+    /// Reads packets from the TUN adapter, applies egress ACL, encapsulates them with PQMT,
+    /// and dispatches via Direct P2P or Relay. Returns a join handle for the background loop.
+    pub fn spawn_packet_pipeline(
+        self: &Arc<Self>,
+    ) -> tokio::task::JoinHandle<()> {
+        let engine = Arc::clone(self);
+        let mut shutdown_rx = self.shutdown_tx.subscribe();
+
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    changed = shutdown_rx.changed() => {
+                        if changed.is_err() || *shutdown_rx.borrow() {
+                            break;
+                        }
+                    }
+                    pkt_res = engine.tun.read_packet() => {
+                        match pkt_res {
+                            Ok(packet) => {
+                                let _ = engine.process_outbound_packet(&packet);
+                            }
+                            Err(_) => {
+                                // If TUN is closed or stopping, yield or break
+                                tokio::time::sleep(Duration::from_millis(10)).await;
+                            }
+                        }
+                    }
+                }
+            }
+        })
+    }
+
+    /// Process an outbound packet originating from the virtual TUN adapter.
+    ///
+    /// Extracts destination IP, resolves peer session in RoamingTable,
+    /// checks Egress ACL, frames packet via PQMT, and routes over Direct P2P or Relay.
+    pub fn process_outbound_packet(&self, raw_packet: &[u8]) -> Result<Option<OutboundPacket>> {
+        if raw_packet.is_empty() {
+            return Ok(None);
+        }
+
+        // 1. Determine destination IP (IPv4 or IPv6)
+        let dst_ip = match raw_packet[0] >> 4 {
+            4 => {
+                if raw_packet.len() < 20 {
+                    self.metrics.dropped_errors.fetch_add(1, Ordering::Relaxed);
+                    return Ok(None);
+                }
+                let octets: [u8; 4] = raw_packet[16..20].try_into().unwrap();
+                std::net::IpAddr::V4(std::net::Ipv4Addr::from(octets))
+            }
+            6 => {
+                if raw_packet.len() < 40 {
+                    self.metrics.dropped_errors.fetch_add(1, Ordering::Relaxed);
+                    return Ok(None);
+                }
+                let octets: [u8; 16] = raw_packet[24..40].try_into().unwrap();
+                std::net::IpAddr::V6(std::net::Ipv6Addr::from(octets))
+            }
+            _ => {
+                self.metrics.dropped_errors.fetch_add(1, Ordering::Relaxed);
+                return Ok(None);
+            }
+        };
+
+        // 2. Lookup peer session via RoamingTable
+        let peer_entry = match dst_ip {
+            std::net::IpAddr::V4(v4) => self.roaming.get_by_ipv4(&v4),
+            std::net::IpAddr::V6(v6) => self.roaming.get_by_ipv6(&v6),
+        };
+
+        let peer = match peer_entry {
+            Some(p) => p,
+            None => {
+                self.metrics.dropped_no_route.fetch_add(1, Ordering::Relaxed);
+                return Ok(None);
+            }
+        };
+
+        // 3. Egress ACL Check
+        let acl_verdict = self.acl.evaluate_egress(&peer.ark_id, raw_packet);
+        if acl_verdict != crate::acl::AclVerdict::Allow {
+            self.metrics.dropped_acl.fetch_add(1, Ordering::Relaxed);
+            return Ok(None);
+        }
+
+        // 4. PQMT Encapsulation
+        let framed_bytes = self.pqmt.frame_data_packet(peer.session.session_id, raw_packet)?;
+
+        // 5. Determine Route Mode & Target Endpoint
+        let route_mode = self.get_route_mode(&peer.ark_id).unwrap_or(RouteMode::DirectP2p);
+        let out_pkt = match route_mode {
+            RouteMode::DirectP2p => {
+                self.metrics.p2p_packets.fetch_add(1, Ordering::Relaxed);
+                OutboundPacket {
+                    recipient_id: peer.ark_id,
+                    target_endpoint: peer.physical_endpoint,
+                    route_mode: RouteMode::DirectP2p,
+                    payload: framed_bytes.to_vec(),
+                }
+            }
+            RouteMode::Relayed => {
+                self.metrics.relayed_packets.fetch_add(1, Ordering::Relaxed);
+                // Find first available relay or fallback to peer endpoint
+                let relays = self.relays.read().unwrap();
+                let relay_endpoint = relays.values().next().copied().unwrap_or(peer.physical_endpoint);
+                OutboundPacket {
+                    recipient_id: peer.ark_id,
+                    target_endpoint: relay_endpoint,
+                    route_mode: RouteMode::Relayed,
+                    payload: framed_bytes.to_vec(),
+                }
+            }
+        };
+
+        self.metrics.packets_sent.fetch_add(1, Ordering::Relaxed);
+        self.metrics.bytes_sent.fetch_add(raw_packet.len() as u64, Ordering::Relaxed);
+
+        Ok(Some(out_pkt))
+    }
+
+    /// Process an incoming encapsulated packet received from the wire/transport.
+    ///
+    /// Validates temporal window, anti-replay, KMAC256 tag, dynamically roams endpoint,
+    /// performs Ingress ACL check, and writes plaintext IP packet into TUN adapter.
+    pub async fn process_inbound_packet(
+        &self,
+        packet_bytes: &[u8],
+        from_endpoint: SocketAddr,
+        packet_timestamp_secs: u64,
+        local_secs: u64,
+    ) -> Result<()> {
+        // 1. Process packet and roam in RoamingTable
+        let (session_id, _seq, plaintext) = match self.roaming.process_data_packet_and_roam(
+            packet_bytes,
+            from_endpoint,
+            packet_timestamp_secs,
+            local_secs,
+        ) {
+            Ok(res) => res,
+            Err(e) => {
+                self.metrics.dropped_errors.fetch_add(1, Ordering::Relaxed);
+                return Err(e);
+            }
+        };
+
+        // 2. Identify peer for ACL check
+        let peer_entry = match self.roaming.get_by_session_id(session_id) {
+            Some(entry) => entry,
+            None => {
+                self.metrics.dropped_no_route.fetch_add(1, Ordering::Relaxed);
+                return Ok(());
+            }
+        };
+
+        // 3. Ingress ACL Check (epoch 1)
+        let verdict = self.acl.evaluate_ingress(&peer_entry.ark_id, 1, &plaintext);
+        if verdict != crate::acl::AclVerdict::Allow {
+            self.metrics.dropped_acl.fetch_add(1, Ordering::Relaxed);
+            return Ok(());
+        }
+
+        // 4. Write plaintext IP packet into TUN
+        self.tun.write_packet(&plaintext).await?;
+
+        // 5. Update metrics
+        self.metrics.packets_received.fetch_add(1, Ordering::Relaxed);
+        self.metrics.bytes_received.fetch_add(plaintext.len() as u64, Ordering::Relaxed);
+
         Ok(())
     }
 

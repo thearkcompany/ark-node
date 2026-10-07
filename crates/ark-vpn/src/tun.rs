@@ -205,37 +205,15 @@ fn clamp_tcp_mss_ipv4(packet: &mut [u8], mtu: usize) -> Result<()> {
     }
 
     let ihl = ((packet[0] & 0x0F) * 4) as usize;
-    if packet.len() < ihl {
-        return Ok(());
-    }
-
     let protocol = packet[9];
     if protocol != 6 {
         return Ok(()); // Not TCP
     }
 
-    let tcp_bytes = &mut packet[ihl..];
-    if tcp_bytes.len() < 20 {
-        return Ok(());
-    }
-
-    let flags = tcp_bytes[13];
-    let is_syn = (flags & 0x02) != 0;
-    if !is_syn {
-        return Ok(());
-    }
-
-    let data_offset = ((tcp_bytes[12] >> 4) * 4) as usize;
-    if tcp_bytes.len() < data_offset {
-        return Ok(());
-    }
-
     // Maximum MSS = MTU - IPv4 header (20B min) - TCP header (20B min)
     let max_mss = (mtu.saturating_sub(40)).min(TCP_MSS_FLOOR as usize) as u16;
 
-    let modified = clamp_tcp_options(&mut tcp_bytes[20..data_offset], max_mss);
-    if modified {
-        // Recalculate IPv4 TCP Checksum
+    if clamp_tcp_segment(packet, ihl, max_mss) {
         recalculate_tcp_checksum_ipv4(packet, ihl);
     }
 
@@ -252,32 +230,36 @@ fn clamp_tcp_mss_ipv6(packet: &mut [u8], mtu: usize) -> Result<()> {
         return Ok(()); // Not TCP (or has extension headers)
     }
 
-    let tcp_bytes = &mut packet[40..];
-    if tcp_bytes.len() < 20 {
-        return Ok(());
-    }
-
-    let flags = tcp_bytes[13];
-    let is_syn = (flags & 0x02) != 0;
-    if !is_syn {
-        return Ok(());
-    }
-
-    let data_offset = ((tcp_bytes[12] >> 4) * 4) as usize;
-    if tcp_bytes.len() < data_offset {
-        return Ok(());
-    }
-
     // Maximum MSS = MTU - IPv6 header (40B) - TCP header (20B min)
-    let max_mss = (mtu.saturating_sub(60)).min(TCP_MSS_FLOOR as usize) as u16;
+    let max_mss = (mtu.saturating_sub(60)).min(TCP_MSS_IPV6_FLOOR as usize) as u16;
 
-    let modified = clamp_tcp_options(&mut tcp_bytes[20..data_offset], max_mss);
-    if modified {
-        // Recalculate IPv6 TCP Checksum
+    if clamp_tcp_segment(packet, 40, max_mss) {
         recalculate_tcp_checksum_ipv6(packet, 40);
     }
 
     Ok(())
+}
+
+/// Common helper to validate TCP SYN packet and clamp MSS in TCP options.
+/// Returns true if the TCP options were modified and checksum needs recalculation.
+fn clamp_tcp_segment(packet: &mut [u8], tcp_offset: usize, max_mss: u16) -> bool {
+    if packet.len() < tcp_offset + 20 {
+        return false;
+    }
+
+    let tcp_bytes = &mut packet[tcp_offset..];
+    let flags = tcp_bytes[13];
+    let is_syn = (flags & 0x02) != 0;
+    if !is_syn {
+        return false;
+    }
+
+    let data_offset = ((tcp_bytes[12] >> 4) * 4) as usize;
+    if tcp_bytes.len() < data_offset || data_offset < 20 {
+        return false;
+    }
+
+    clamp_tcp_options(&mut tcp_bytes[20..data_offset], max_mss)
 }
 
 /// Iterate over TCP options and clamp MSS option (Kind = 2, Length = 4).

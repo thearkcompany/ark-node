@@ -33,27 +33,7 @@ impl DeterministicIpam {
         hasher.update(b"ARK-VPN-IPAM-V1");
         hasher.update(ark_id);
         let hash = hasher.finalize();
-
-        // 1. IPv6 derivation: fd00::/8
-        let mut v6_octets = [0u8; 16];
-        v6_octets[0] = 0xfd;
-        v6_octets[1] = 0x00;
-        // Remaining 14 bytes (112 bits) plus 8 bits: total 120 bits.
-        // Copy 14 bytes (octets 2..16) directly from hash
-        v6_octets[2..16].copy_from_slice(&hash[0..14]);
-
-        let ipv6 = Ipv6Addr::from(v6_octets);
-
-        // 2. IPv4 derivation: 100.64.0.0/10
-        // 100.64.0.0 in u32 is (100 << 24) | (64 << 16) = 0x6440_0000
-        // Host bits mask: 22 bits -> 0x003F_FFFF
-        let host_raw = u32::from_be_bytes([0, hash[14], hash[15], hash[16]]);
-        let host_bits = host_raw & 0x003F_FFFF;
-        let cgnat_base: u32 = (100 << 24) | (64 << 16);
-        let ipv4_u32 = cgnat_base | host_bits;
-        let ipv4 = Ipv4Addr::from(ipv4_u32);
-
-        DualStackAddress { ipv6, ipv4 }
+        Self::derive_from_hash(&hash)
     }
 
     /// Derive from cluster context and ArkID if cluster isolation is required.
@@ -63,13 +43,23 @@ impl DeterministicIpam {
         hasher.update(cluster_id);
         hasher.update(ark_id);
         let hash = hasher.finalize();
+        Self::derive_from_hash(&hash)
+    }
 
+    /// Common internal helper to compute IPv6 ULA and IPv4 CGNAT from a 32-byte hash.
+    fn derive_from_hash(hash: &[u8]) -> DualStackAddress {
+        // 1. IPv6 derivation: fd00::/8
         let mut v6_octets = [0u8; 16];
         v6_octets[0] = 0xfd;
         v6_octets[1] = 0x00;
+        // Remaining 14 bytes (112 bits) plus 8 bits: total 120 bits.
+        // Copy 14 bytes (octets 2..16) directly from hash
         v6_octets[2..16].copy_from_slice(&hash[0..14]);
         let ipv6 = Ipv6Addr::from(v6_octets);
 
+        // 2. IPv4 derivation: 100.64.0.0/10
+        // 100.64.0.0 in u32 is (100 << 24) | (64 << 16) = 0x6440_0000
+        // Host bits mask: 22 bits -> 0x003F_FFFF
         let host_raw = u32::from_be_bytes([0, hash[14], hash[15], hash[16]]);
         let host_bits = host_raw & 0x003F_FFFF;
         let cgnat_base: u32 = (100 << 24) | (64 << 16);
