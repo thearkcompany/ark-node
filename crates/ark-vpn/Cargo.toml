@@ -16,6 +16,7 @@ tokio = { version = "1.39", features = ["sync", "rt"] }
 tracing = "0.1"
 libc = "0.2"
 rand_core = "0.6"
+ark-time = { path = "../ark-time" }
 
 [dev-dependencies]
 tokio = { version = "1.39", features = ["macros", "rt-multi-thread"] }
