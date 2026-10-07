@@ -33,3 +33,4 @@ tempfile = "3.27"
 
 [dev-dependencies]
 tempfile = "3.27"
+rand = "0.8"
