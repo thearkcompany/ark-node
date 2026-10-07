@@ -40,6 +40,9 @@ pub enum VpnError {
 
     #[error("Session hijacking detected: endpoint update rejected")]
     HijackingRejected(String),
+
+    #[error("Packet dropped by ACL policy: {0}")]
+    AclDenied(String),
 }
 
 pub type Result<T> = std::result::Result<T, VpnError>;
