@@ -5,11 +5,13 @@
 //! strict memory ceilings (64 MB via StoreLimitsBuilder), and epoch deadline timers,
 //! alongside Ark Queue (Fjall LSM with in-memory ACK elision) and Ark Cron (PMT-driven).
 
+pub mod cron;
 pub mod error;
 pub mod lease;
 pub mod queue;
 pub mod worker;
 
+pub use cron::{ArkCron, CronJob, CronSchedule, MockPmtClock, PmtClock, UtcDateTime};
 pub use error::{ArkQueueError, PaasError, QueueResult, Result};
 pub use lease::JobLease;
 pub use queue::{ArkQueue, QueueConfig, Task, TaskStatus};
