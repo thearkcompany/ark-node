@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 ark-core = { path = "../ark-core" }
+ark-crypto = { path = "../ark-crypto" }
 ark-protocol = { path = "../ark-protocol" }
 ark-storage = { path = "../ark-storage" }
 hex = "0.4"

@@ -41,3 +41,13 @@ pub const PARITY_SHARDS: usize = 4;
 
 /// Canonical Cauchy RS total shards: 14 (10 + 4).
 pub const TOTAL_SHARDS: usize = DATA_SHARDS + PARITY_SHARDS;
+
+/// Transient TTL window for Staged Full Custody: 72 hours (in seconds).
+pub const STAGED_CUSTODY_TTL_SECS: u64 = 72 * 60 * 60; // 259,200 seconds
+
+/// Maximum payload size eligible for Staged Full Custody: < 25 MB (25 * 1024 * 1024 bytes).
+pub const STAGED_MAX_FILE_SIZE: u64 = 25 * 1024 * 1024;
+
+/// Minimum remote PoR challenges required to satisfy SafeGhostLock: 10.
+pub const REQUIRED_POR_CHALLENGES: usize = 10;
+
