@@ -104,3 +104,24 @@ A mandatory 14-day quarantine window following the expiration of a domain's `TAG
 ### Compressed Patricia Trie (Radix Trie)
 An in-memory radix tree data structure optimized for string prefixes that performs domain name lookups in $\mathcal{O}(k) < 10\ \mu\text{s}$ time. Supports atomic, lock-free lookups using Copy-on-Write and atomic pointer swaps.
 
+## Distributed Blob Storage & Erasure Coding (GCP-10)
+
+### Ark Blob
+A binary payload exceeding the canonical $64\text{ KB}$ `ArkEnvelope` ceiling, subjected to Cauchy Reed-Solomon erasure coding, content-addressed storage, and Merkle proof-of-retrievability verification.
+
+### Cauchy Reed-Solomon (10+4)
+An erasure coding scheme in Galois Field $GF(2^8)$ parameterized with $k=10$ data shards and $m=4$ parity shards of standard $1\text{ MB}$ block size ($1,048,576\text{ bytes}$), guaranteeing complete file reconstruction from any 10 distinct shards among the 14 total.
+
+### Two-Tier Merkle Tree
+A hierarchical Merkle tree structure comprising a pre-coding $64\text{ KB}$ sub-chunk integrity tree and a post-coding 14-leaf shard tree whose root constitutes the canonical `BlobCID` (`TAG_CONTENT_CID`).
+
+### Staged Full Custody
+A two-phase custody lifecycle for blobs $< 25\text{ MB}$ uploaded from mobile/edge clients, holding all 14 shards ($10+4$) in the DePIN network under a 72-hour transient TTL until the owner's Homelab emits an authenticated `KIND_HOMELAB_ACK`, whereupon data shards are discarded and the network settles on $40\%$ parity retention.
+
+### Safe-Ghost Locking
+A client-side safety mechanism physically prohibiting a local node or mobile app from evicting or purging its local cache of an uploaded file until cryptographic confirmation is received via `KIND_HOMELAB_ACK` or successful verification of at least 10 remote Proof-of-Retrievability keeper challenges.
+
+### Proof-of-Retrievability (PoR)
+A compact audit protocol (`KIND_DEPIN_CHALLENGE`) allowing verifiers to confirm storage keeper possession of a $1\text{ MB}$ shard by challenging a pseudo-randomly sampled $4\text{ KB}$ sub-block salted with `TAG_CHALLENGE_SEED` and verified via KMAC256 and Merkle inclusion paths without downloading the shard.
+
+
