@@ -58,6 +58,11 @@ pub fn classify_retention(envelope: &ArkEnvelope) -> RetentionClass {
         return RetentionClass::Class3ParamReplaceable;
     }
 
+    // 3b. Class 1: 0x1000_0000..0x2000_0000 (e.g. KIND_BLOB_MANIFEST 0x1000_0003)
+    if (0x1000_0000..0x2000_0000).contains(&kind) {
+        return RetentionClass::Class1AppendOnly;
+    }
+
     // 4. Class 5: kind >= 40000
     if kind >= 40000 {
         return RetentionClass::Class5StrictWorm;
