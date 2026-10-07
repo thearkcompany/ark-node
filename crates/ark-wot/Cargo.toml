@@ -10,6 +10,8 @@ ark-protocol = { path = "../ark-protocol" }
 ark-time = { path = "../ark-time" }
 ark-storage = { path = "../ark-storage" }
 ciborium = "0.2.2"
+dashmap = "6.2"
+parking_lot = "0.12"
 serde = { version = "1.0", features = ["derive"] }
 sha3 = "0.10"
 thiserror = "1.0"
