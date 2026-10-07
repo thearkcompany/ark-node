@@ -5,3 +5,15 @@ edition = "2021"
 
 [dependencies]
 ark-core = { path = "../ark-core" }
+ark-crypto = { path = "../ark-crypto" }
+ark-protocol = { path = "../ark-protocol" }
+ark-time = { path = "../ark-time" }
+ark-storage = { path = "../ark-storage" }
+ciborium = "0.2.2"
+serde = { version = "1.0", features = ["derive"] }
+sha3 = "0.10"
+thiserror = "1.0"
+
+[dev-dependencies]
+rand = "0.8"
+tempfile = "3.27"
