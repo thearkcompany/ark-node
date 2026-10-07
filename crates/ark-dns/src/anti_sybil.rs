@@ -6,6 +6,7 @@
 //! - Validates and extracts `TAG_PARAM_D` (FQDN, 0x0004), `TAG_DNS_LEASE_EPOCH` (0x001B), and `TAG_L2_CONTRACT` (0x000F).
 //! - Enforces pluggable `L2ContractVerifier` escrow verification.
 
+use std::sync::Arc;
 use subtle::ConstantTimeEq;
 use ark_core::FastHeader;
 use ark_protocol::envelope::ArkEnvelope;
@@ -29,6 +30,19 @@ pub trait L2ContractVerifier: Send + Sync {
     /// Verify an escrow contract deposit on Ark Pay L2 for the given owner key ID.
     fn verify_escrow_contract(&self, contract_id: &[u8], owner_key_id: &[u8]) -> Result<bool>;
 }
+
+impl<T: L2ContractVerifier + ?Sized> L2ContractVerifier for Arc<T> {
+    fn verify_escrow_contract(&self, contract_id: &[u8], owner_key_id: &[u8]) -> Result<bool> {
+        (**self).verify_escrow_contract(contract_id, owner_key_id)
+    }
+}
+
+impl<T: L2ContractVerifier + ?Sized> L2ContractVerifier for &T {
+    fn verify_escrow_contract(&self, contract_id: &[u8], owner_key_id: &[u8]) -> Result<bool> {
+        (**self).verify_escrow_contract(contract_id, owner_key_id)
+    }
+}
+
 
 /// Validated Human-Readable Public DNS claim metadata.
 #[derive(Clone, Debug, PartialEq, Eq)]

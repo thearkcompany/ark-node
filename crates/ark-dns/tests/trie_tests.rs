@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 use ark_dns::record::DomainRoutingRecord;
-use ark_dns::trie::CompressedPatriciaTrie;
+use ark_dns::trie::{CompressedPatriciaTrie, MerkleProof};
 
 #[test]
 fn test_trie_insert_get_single() {
@@ -204,6 +204,12 @@ fn test_merkle_proof_generation_and_verification() {
             r.fqdn,
             serialized_len
         );
+
+        // Binary serialization roundtrip
+        let proof_bytes = proof.to_bytes();
+        let decoded_proof = MerkleProof::from_bytes(&proof_bytes).expect("decoding proof succeeds");
+        assert_eq!(decoded_proof, proof);
+        assert!(decoded_proof.verify(&root, r));
 
         // Verification succeeds with correct root and record
         assert!(proof.verify(&root, r));

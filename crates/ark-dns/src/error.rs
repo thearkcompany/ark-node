@@ -65,6 +65,10 @@ pub enum DnsError {
 
     #[error("Invalid lease duration: {0}")]
     InvalidLeaseDuration(String),
+
+    #[error("Domain '{0}' not found (NXDOMAIN)")]
+    NotFound(String),
 }
+
 
 pub type Result<T> = std::result::Result<T, DnsError>;

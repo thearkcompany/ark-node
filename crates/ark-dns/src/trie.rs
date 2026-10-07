@@ -48,6 +48,103 @@ impl MerkleProof {
         size
     }
 
+    /// Encode MerkleProof to compact binary format.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(self.encoded_size());
+        let fqdn_bytes = self.fqdn.as_bytes();
+        buf.extend_from_slice(&(fqdn_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(fqdn_bytes);
+        buf.extend_from_slice(&self.record_digest);
+        buf.extend_from_slice(&(self.path_steps.len() as u16).to_be_bytes());
+        for step in &self.path_steps {
+            buf.extend_from_slice(&(step.prefix.len() as u16).to_be_bytes());
+            buf.extend_from_slice(&step.prefix);
+            buf.push(step.sibling_hashes.len() as u8);
+            for sh in &step.sibling_hashes {
+                buf.extend_from_slice(sh);
+            }
+            match step.node_val_digest {
+                Some(ref vd) => {
+                    buf.push(1u8);
+                    buf.extend_from_slice(vd);
+                }
+                None => {
+                    buf.push(0u8);
+                }
+            }
+        }
+        buf
+    }
+
+    /// Decode MerkleProof from compact binary format.
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        let mut offset = 0;
+        if bytes.len() < offset + 2 {
+            return None;
+        }
+        let fqdn_len = u16::from_be_bytes(bytes[offset..offset + 2].try_into().ok()?) as usize;
+        offset += 2;
+        if bytes.len() < offset + fqdn_len + 32 + 2 {
+            return None;
+        }
+        let fqdn = std::str::from_utf8(&bytes[offset..offset + fqdn_len]).ok()?.to_string();
+        offset += fqdn_len;
+        let mut record_digest = [0u8; 32];
+        record_digest.copy_from_slice(&bytes[offset..offset + 32]);
+        offset += 32;
+        let steps_len = u16::from_be_bytes(bytes[offset..offset + 2].try_into().ok()?) as usize;
+        offset += 2;
+
+        let mut path_steps = Vec::with_capacity(steps_len);
+        for _ in 0..steps_len {
+            if bytes.len() < offset + 2 {
+                return None;
+            }
+            let pfx_len = u16::from_be_bytes(bytes[offset..offset + 2].try_into().ok()?) as usize;
+            offset += 2;
+            if bytes.len() < offset + pfx_len + 1 {
+                return None;
+            }
+            let prefix = bytes[offset..offset + pfx_len].to_vec();
+            offset += pfx_len;
+            let sib_len = bytes[offset] as usize;
+            offset += 1;
+            if bytes.len() < offset + sib_len * 32 + 1 {
+                return None;
+            }
+            let mut sibling_hashes = Vec::with_capacity(sib_len);
+            for _ in 0..sib_len {
+                let mut sh = [0u8; 32];
+                sh.copy_from_slice(&bytes[offset..offset + 32]);
+                offset += 32;
+                sibling_hashes.push(sh);
+            }
+            let has_val = bytes[offset];
+            offset += 1;
+            let node_val_digest = if has_val == 1 {
+                if bytes.len() < offset + 32 {
+                    return None;
+                }
+                let mut vd = [0u8; 32];
+                vd.copy_from_slice(&bytes[offset..offset + 32]);
+                offset += 32;
+                Some(vd)
+            } else {
+                None
+            };
+            path_steps.push(MerkleProofStep {
+                prefix,
+                sibling_hashes,
+                node_val_digest,
+            });
+        }
+        Some(MerkleProof {
+            fqdn,
+            record_digest,
+            path_steps,
+        })
+    }
+
     /// Verify this inclusion proof against a given root hash and record.
     pub fn verify(&self, root_hash: &[u8; 32], record: &DomainRoutingRecord) -> bool {
         if self.fqdn != record.fqdn {

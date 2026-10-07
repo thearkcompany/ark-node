@@ -1,5 +1,6 @@
 pub mod anti_sybil;
 pub mod crypto_name;
+pub mod engine;
 pub mod error;
 pub mod lifecycle;
 pub mod overlay;
@@ -18,6 +19,7 @@ pub use crypto_name::{
     derive_identity_hash, format_cryptographic_name, format_cryptographic_name_from_hash,
     is_cryptographic_name, parse_cryptographic_name, verify_cryptographic_name,
 };
+pub use engine::{DnsPacketHandler, SovereignDnsEngine, SovereignDnsEngineBuilder};
 pub use error::{DnsError, Result};
 pub use lifecycle::{
     DomainLeaseState, LeaseLifecycleEngine, MockTimeProvider, SystemTimeProvider, TimeProvider,
