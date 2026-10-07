@@ -1,3 +1,4 @@
+pub mod acl;
 pub mod error;
 pub mod framing;
 pub mod ipam;
@@ -5,6 +6,9 @@ pub mod pqmt;
 pub mod roaming;
 pub mod tun;
 
+pub use acl::{
+    AclEngine, AclVerdict, IpProtocol, VpnAction, VpnAclStats, VpnPeerInfo, VpnSecurityPolicy,
+};
 pub use error::{Result, VpnError};
 pub use framing::{
     deframe_fast_packet, deframe_micro_packet, frame_fast_packet, frame_micro_packet,
