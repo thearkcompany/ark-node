@@ -82,6 +82,12 @@ pub enum BlobError {
         challenges: usize,
         required: usize,
     },
+
+    #[error("L2 escrow contract verification failed: {0}")]
+    EscrowVerificationFailed(String),
+
+    #[error("Invalid QUIC FastHeader framing: {0}")]
+    InvalidFastHeader(String),
 }
 
 impl From<std::io::Error> for BlobError {

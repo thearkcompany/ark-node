@@ -7,13 +7,14 @@ pub mod proto {
     include!(concat!(env!("OUT_DIR"), "/ark.protocol.v1.rs"));
 }
 
+pub use prost;
 pub use envelope::*;
 pub use tags::*;
 pub use hashing::*;
 pub use wire::*;
 pub use proto::{
-    ArkNodeStatus, DomainResolveResponse, MstEntryWire, MstNodeWire, MstSyncRequest,
-    MstSyncResponse,
+    ArkBlobManifest, ArkNodeStatus, BlobShardDescriptor, DepinPorChallenge, DepinPorResponse,
+    DomainResolveResponse, MstEntryWire, MstNodeWire, MstSyncRequest, MstSyncResponse,
 };
 
 impl From<envelope::ArkEnvelope> for proto::ArkEnvelope {

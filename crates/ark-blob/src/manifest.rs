@@ -64,9 +64,98 @@ impl BlobManifest {
         serde_json::from_slice(bytes).map_err(|e| BlobError::SerializationError(e.to_string()))
     }
 
+    /// Converts this manifest into a Protobuf wire type `ArkBlobManifest`.
+    pub fn to_proto(&self, escrow_contract: Option<&[u8]>) -> ark_protocol::ArkBlobManifest {
+        let mut shards = Vec::with_capacity(self.shard_hashes.len());
+        for idx in 0..self.shard_hashes.len() {
+            let shard_hash = self.shard_hashes.get(idx).cloned().unwrap_or([0u8; 32]);
+            let shard_root = self.shard_roots.get(idx).cloned().unwrap_or([0u8; 32]);
+            shards.push(ark_protocol::BlobShardDescriptor {
+                shard_index: idx as u32,
+                shard_hash: shard_hash.to_vec(),
+                shard_root: shard_root.to_vec(),
+                shard_size: crate::constants::SHARD_SIZE as u64,
+            });
+        }
+
+        ark_protocol::ArkBlobManifest {
+            blob_cid: self.blob_cid.to_vec(),
+            total_size: self.total_size,
+            data_shards: self.data_shards as u32,
+            parity_shards: self.parity_shards as u32,
+            shard_hashes: self.shard_hashes.iter().map(|h| h.to_vec()).collect(),
+            shard_roots: self.shard_roots.iter().map(|r| r.to_vec()).collect(),
+            shards,
+            created_at: self.created_at,
+            escrow_contract: escrow_contract.map(|c| c.to_vec()).unwrap_or_default(),
+        }
+    }
+
+    /// Converts a Protobuf `ArkBlobManifest` into a `BlobManifest`.
+    pub fn from_proto(proto: &ark_protocol::ArkBlobManifest) -> Result<Self> {
+        if proto.blob_cid.len() != 32 {
+            return Err(BlobError::SerializationError("Invalid proto blob_cid length".into()));
+        }
+        let mut blob_cid = [0u8; 32];
+        blob_cid.copy_from_slice(&proto.blob_cid);
+
+        let mut shard_hashes = Vec::with_capacity(proto.shard_hashes.len());
+        for h in &proto.shard_hashes {
+            if h.len() != 32 {
+                return Err(BlobError::SerializationError("Invalid shard hash length in proto".into()));
+            }
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(h);
+            shard_hashes.push(arr);
+        }
+
+        let mut shard_roots = Vec::with_capacity(proto.shard_roots.len());
+        for r in &proto.shard_roots {
+            if r.len() != 32 {
+                return Err(BlobError::SerializationError("Invalid shard root length in proto".into()));
+            }
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(r);
+            shard_roots.push(arr);
+        }
+
+        Ok(Self {
+            blob_cid,
+            total_size: proto.total_size,
+            data_shards: proto.data_shards as usize,
+            parity_shards: proto.parity_shards as usize,
+            shard_hashes,
+            shard_roots,
+            created_at: proto.created_at,
+        })
+    }
+
+    /// Serializes manifest into Protobuf encoded binary format.
+    pub fn to_proto_bytes(&self, escrow_contract: Option<&[u8]>) -> Vec<u8> {
+        use ark_protocol::prost::Message;
+        self.to_proto(escrow_contract).encode_to_vec()
+    }
+
+    /// Deserializes manifest from Protobuf binary format.
+    pub fn from_proto_bytes(bytes: &[u8]) -> Result<Self> {
+        use ark_protocol::prost::Message;
+        let proto = ark_protocol::ArkBlobManifest::decode(bytes)
+            .map_err(|e| BlobError::SerializationError(e.to_string()))?;
+        Self::from_proto(&proto)
+    }
+
     /// Converts this manifest into an `ArkEnvelope` with kind `KIND_BLOB_MANIFEST` (`0x1000_0003`),
     /// classified as Retention Class 1 in `ark-storage`.
     pub fn to_envelope(&self, sender_id: &[u8; 32]) -> Result<ArkEnvelope> {
+        self.to_envelope_with_escrow(sender_id, None)
+    }
+
+    /// Converts this manifest into an `ArkEnvelope` optionally carrying `TAG_L2_CONTRACT` (0x000F).
+    pub fn to_envelope_with_escrow(
+        &self,
+        sender_id: &[u8; 32],
+        escrow_contract: Option<&[u8]>,
+    ) -> Result<ArkEnvelope> {
         let payload = self.to_bytes()?;
         let mut sender_key_id = [0u8; 16];
         sender_key_id.copy_from_slice(&sender_id[..16]);
@@ -80,10 +169,14 @@ impl BlobManifest {
             1,
         );
 
-        let tags = vec![
+        let mut tags = vec![
             BinaryTag::new(TAG_CONTENT_CID, self.blob_cid.to_vec()),
             BinaryTag::new(0, KIND_BLOB_MANIFEST.to_be_bytes().to_vec()),
         ];
+
+        if let Some(contract) = escrow_contract {
+            tags.push(BinaryTag::new(crate::constants::TAG_L2_CONTRACT, contract.to_vec()));
+        }
 
         ArkEnvelope::new(
             fast_header.to_bytes(),
@@ -100,6 +193,10 @@ impl BlobManifest {
 
     /// Reconstructs a `BlobManifest` from a canonical `ArkEnvelope`.
     pub fn from_envelope(envelope: &ArkEnvelope) -> Result<Self> {
+        // Attempt protobuf decode first, then JSON fallback
+        if let Ok(m) = Self::from_proto_bytes(&envelope.payload) {
+            return Ok(m);
+        }
         Self::from_bytes(&envelope.payload)
     }
 }
