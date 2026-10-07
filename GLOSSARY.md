@@ -75,3 +75,32 @@ An asynchronous tree-diffing protocol over QUIC streams (`KIND_KV_MST_SYNC`) exe
 ### Tombstone Envelope
 A cryptographically signed `ArkEnvelope` carrying a deletion marker and recent timestamp, treated as an active entry in the MST to deterministically supersede earlier versions across peer nodes until expired by garbage collection.
 
+## Sovereign DNS & Anti-Sybil Registry (GCP-08)
+
+### Sovereign DNS (.ark)
+The censorship-resistant root naming namespace of the ARK ecosystem, providing deterministic, hardware-independent name resolution without reliance on ICANN, legacy TLD registries, or root DNS authorities.
+
+### Three-Tier Naming Model
+The architectural taxonomy dividing `.ark` names into three distinct classes: Cryptographic Names (`ark1...ark`, self-authenticating in $\mathcal{O}(1)$), Private Overlays (local/homelab domains isolated per keyholder in Fjall LSM), and Human-Readable Public Names (short commercial/personal names anchored by L2 bonds and light PoW).
+
+### Cryptographic Domain Name
+A deterministic sovereign domain name formatted as `"ark1"` $\parallel$ `Bech32(IdentityHash)` $\parallel$ `".ark"`. Free, unreserved, collision-free, and verifiable in $\mathcal{O}(1)$ time purely from the sender's public key without directory lookups.
+
+### Private Overlay Domain
+A local or homelab domain name (such as `nas.ark` or `gateway.ark`) restricted to the owner's authenticated device cluster or local storage engine, resolving without public directory announcements.
+
+### Human-Readable Public Domain
+A global public domain name (such as `shop.ark` or `alice.ark`) registered via a canonical `KIND_DNS_CLAIM_PUBLIC` envelope, secured against squatting and Sybil spam via light Proof-of-Work and refundable L2 escrow contracts.
+
+### Anti-Sybil Proof-of-Work (PoW)
+A computational cost mechanism requiring domain claim envelopes to contain at least 16 leading zero bits on their canonical SHA3-256 envelope digest, deterring automated spam registration without requiring fee payments on Layer 1.
+
+### L2 Escrow Bond
+A verifiable economic stake deposited on Ark Pay Layer 2 associated with a public domain registration via `TAG_L2_CONTRACT` (`0x000F`), deterring malicious name squatting while remaining refundable upon orderly relinquishment.
+
+### Domain Lease Grace Period
+A mandatory 14-day quarantine window following the expiration of a domain's `TAG_DNS_LEASE_EPOCH`. During this period, the domain ceases active resolution for external queries but remains exclusively reservable by the original owner key for renewal before release to the public.
+
+### Compressed Patricia Trie (Radix Trie)
+An in-memory radix tree data structure optimized for string prefixes that performs domain name lookups in $\mathcal{O}(k) < 10\ \mu\text{s}$ time. Supports atomic, lock-free lookups using Copy-on-Write and atomic pointer swaps.
+
