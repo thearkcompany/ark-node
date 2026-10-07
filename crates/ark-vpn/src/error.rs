@@ -16,6 +16,21 @@ pub enum VpnError {
 
     #[error("Crypto error: {0}")]
     Crypto(String),
+
+    #[error("Invalid session MAC authentication tag")]
+    SessionMacInvalid,
+
+    #[error("Handshake negotiation failed: {0}")]
+    HandshakeFailed(String),
+
+    #[error("Replay detected or non-monotonic sequence counter: {0}")]
+    ReplayDetected(u32),
+
+    #[error("VPN session not found for session id {0}")]
+    SessionNotFound(u32),
+
+    #[error("Framing error: {0}")]
+    FramingError(String),
 }
 
 pub type Result<T> = std::result::Result<T, VpnError>;
