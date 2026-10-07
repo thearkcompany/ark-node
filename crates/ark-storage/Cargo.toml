@@ -5,3 +5,11 @@ edition = "2021"
 
 [dependencies]
 ark-core = { path = "../ark-core" }
+ark-protocol = { path = "../ark-protocol" }
+fjall = "3.1"
+sha3 = "0.10"
+thiserror = "1.0"
+
+[dev-dependencies]
+tempfile = "3.27"
+

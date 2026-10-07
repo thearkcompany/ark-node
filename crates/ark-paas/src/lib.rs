@@ -2,12 +2,17 @@
 //!
 //! Provides WebAssembly sandboxed runtime (Wasmtime) for `wasm32-unknown-unknown`
 //! modules with deterministic dual-pool fuel metering (CPU fuel and I/O fuel),
-//! strict memory ceilings (64 MB via StoreLimitsBuilder), and epoch deadline timers.
+//! strict memory ceilings (64 MB via StoreLimitsBuilder), and epoch deadline timers,
+//! alongside Ark Queue (Fjall LSM with in-memory ACK elision) and Ark Cron (PMT-driven).
 
 pub mod error;
+pub mod lease;
+pub mod queue;
 pub mod worker;
 
-pub use error::{PaasError, Result};
+pub use error::{ArkQueueError, PaasError, QueueResult, Result};
+pub use lease::JobLease;
+pub use queue::{ArkQueue, QueueConfig, Task, TaskStatus};
 pub use worker::{
     WasmWorker, WasmWorkerConfig, WorkerStoreData, DEFAULT_CPU_FUEL, DEFAULT_EPOCH_TICKS,
     DEFAULT_MEMORY_LIMIT_BYTES,
