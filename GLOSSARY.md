@@ -183,3 +183,14 @@ An instantaneous, prioritized cryptographic invalidation (`KIND_WOT_REVOCATION =
 
 ### Trust Tier
 A discrete classification (`CorePeer`, `Trusted`, `Probationary`, `Untrusted`) derived from the numerical trust score and path distance, utilized across protocol layers (`ark-vpn`, `ark-blob`, `ark-dns`, `ark-paas`) to enforce rate limits, admission quotas, bandwidth prioritization, and zero-trust ACL defaults.
+
+## Node Runtime & Subsystem Orchestration (ADR-0015)
+
+### NodeRuntime
+The unified runtime facade and orchestration core (`crates/ark-runtime`) of an ARK sovereign daemon. Encapsulates socket lifecycle, QUIC connection pooling under ALPN `ark-pqc/v1`, wire-speed packet demultiplexing, background task supervision with `CancellationToken` and `JoinSet`, and deterministic routing across all protocol subsystem engines.
+
+### NodeHandle
+An asynchronous, thread-safe handle returned upon spawning a `NodeRuntime`. Exposes the public operational surface of the daemon, including socket address discovery (`local_addr()`), lifecycle state inspection (`status()`), and graceful teardown (`shutdown().await`).
+
+### EnvelopeDispatcher
+The internal demultiplexing and dispatch router of `NodeRuntime`. Inspects incoming `FastHeader` attributes, envelope `kind` identifiers, and core tag masks to synchronously and safely direct decoded `ArkEnvelope` messages to their target subsystem engines (Storage, CRDT MST, DNS, Blob, PaaS, VPN, WoT) under strict peripheral fault isolation.
