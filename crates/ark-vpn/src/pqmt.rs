@@ -8,7 +8,7 @@
 //! - Line-speed zero-copy packet framing and deframing.
 
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use ark_core::constants::FAST_HEADER_SIZE;
 use ark_crypto::fn_dsa::{verify_fn_dsa_512, FN_DSA_512_PUBKEY_SIZE, FN_DSA_512_SIGNATURE_SIZE};
@@ -291,13 +291,21 @@ pub fn derive_session_keys(
 
 /// PQMT Engine managing sessions and packet framing.
 pub struct PqmtEngine {
-    identity: PersistentIdentity,
+    identity: Arc<PersistentIdentity>,
     sessions: RwLock<HashMap<u32, VpnSession>>,
     next_session_id: RwLock<u32>,
 }
 
 impl PqmtEngine {
     pub fn new(identity: PersistentIdentity) -> Self {
+        Self {
+            identity: Arc::new(identity),
+            sessions: RwLock::new(HashMap::new()),
+            next_session_id: RwLock::new(100),
+        }
+    }
+
+    pub fn with_arc(identity: Arc<PersistentIdentity>) -> Self {
         Self {
             identity,
             sessions: RwLock::new(HashMap::new()),
@@ -307,6 +315,11 @@ impl PqmtEngine {
 
     /// Local identity reference.
     pub fn identity(&self) -> &PersistentIdentity {
+        &self.identity
+    }
+
+    /// Local identity Arc reference.
+    pub fn identity_arc(&self) -> &Arc<PersistentIdentity> {
         &self.identity
     }
 
