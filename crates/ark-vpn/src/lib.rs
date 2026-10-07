@@ -2,6 +2,7 @@ pub mod error;
 pub mod framing;
 pub mod ipam;
 pub mod pqmt;
+pub mod roaming;
 pub mod tun;
 
 pub use error::{Result, VpnError};
@@ -11,6 +12,7 @@ pub use framing::{
 };
 pub use ipam::{DeterministicIpam, DualStackAddress};
 pub use pqmt::{HandshakeInit, HandshakeResp, PqmtEngine, VpnSession};
+pub use roaming::{PeerSessionEntry, RoamingTable, DEFAULT_SESSION_IDLE_TIMEOUT};
 pub use tun::{MockTunAdapter, NativeTunAdapter, PacketDirection, VirtualTunAdapter, DEFAULT_SAFE_MTU, TCP_MSS_FLOOR};
 
 /// [Preparação para v1.0] Malha overlay Zero-Trust em user-space.

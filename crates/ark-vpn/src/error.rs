@@ -31,6 +31,15 @@ pub enum VpnError {
 
     #[error("Framing error: {0}")]
     FramingError(String),
+
+    #[error("Clock drift too large: peer delta {0}s exceeds limit ±{1}s")]
+    ClockDriftExceeded(i64, i64),
+
+    #[error("Anti-replay filter rejected packet")]
+    AntiReplayRejected,
+
+    #[error("Session hijacking detected: endpoint update rejected")]
+    HijackingRejected(String),
 }
 
 pub type Result<T> = std::result::Result<T, VpnError>;
