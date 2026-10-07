@@ -203,3 +203,76 @@ pub fn deframe_fast_packet(mut packet: Bytes) -> Result<(FastHeader, Bytes)> {
     let payload = packet.split_off(FAST_HEADER_SIZE);
     Ok((fast_header, payload))
 }
+
+/// Wrap a tunneled payload (wire packet or handshake) into an `ArkEnvelope` with RetentionClass::Class0 (RAM-only).
+pub fn wrap_envelope(
+    sender_id: [u8; 32],
+    recipient_id: [u8; 32],
+    kind: u32,
+    payload: Vec<u8>,
+    timestamp: u64,
+) -> Result<ark_protocol::envelope::ArkEnvelope> {
+    let fast_header = [0u8; FAST_HEADER_SIZE];
+    let tags = vec![ark_protocol::tags::BinaryTag::new(0, kind.to_be_bytes().to_vec())];
+
+    ark_protocol::envelope::ArkEnvelope::new(
+        fast_header,
+        sender_id,
+        recipient_id,
+        payload,
+        vec![], // No separate signature needed for ephemeral class 0 data
+        ark_protocol::tags::TAG_MASK_ROUTING, // Enforce routing flag -> RetentionClass::Class0
+        tags,
+        timestamp,
+    )
+    .map_err(|e| VpnError::Crypto(e.to_string()))
+}
+
+/// Unwrap and validate an `ArkEnvelope` containing tunneled wire traffic.
+/// Verifies retention class 0 classification, expected kind (KIND_VPN_DATA or KIND_VPN_HANDSHAKE),
+/// and extracts `(kind, sender_id, recipient_id, payload)`.
+pub fn unwrap_envelope(
+    envelope: &ark_protocol::envelope::ArkEnvelope,
+) -> Result<(u32, [u8; 32], [u8; 32], Vec<u8>)> {
+    let mut sender_id = [0u8; 32];
+    if envelope.sender_id.len() == 32 {
+        sender_id.copy_from_slice(&envelope.sender_id);
+    } else {
+        return Err(VpnError::FramingError("Invalid envelope sender_id length".into()));
+    }
+
+    let mut recipient_id = [0u8; 32];
+    if envelope.recipient_id.len() == 32 {
+        recipient_id.copy_from_slice(&envelope.recipient_id);
+    } else {
+        return Err(VpnError::FramingError("Invalid envelope recipient_id length".into()));
+    }
+
+    // Extract kind from tag 0
+    let kind = envelope
+        .tags
+        .iter()
+        .find(|t| t.tag_type == 0 && t.tag_value.len() == 4)
+        .map(|t| u32::from_be_bytes([t.tag_value[0], t.tag_value[1], t.tag_value[2], t.tag_value[3]]))
+        .unwrap_or(0);
+
+    if kind != KIND_VPN_DATA && kind != KIND_VPN_HANDSHAKE {
+        return Err(VpnError::FramingError(format!(
+            "Unsupported VPN envelope kind: 0x{:04x}",
+            kind
+        )));
+    }
+
+    // Verify Class 0 classification invariant (TAG_MASK_ROUTING or VPN kinds)
+    let is_class_0 = (envelope.core_tag_mask & ark_protocol::tags::TAG_MASK_ROUTING) != 0
+        || kind == KIND_VPN_DATA
+        || kind == KIND_VPN_HANDSHAKE;
+
+    if !is_class_0 {
+        return Err(VpnError::FramingError(
+            "Envelope violates Class 0 Ephemeral retention invariant".into(),
+        ));
+    }
+
+    Ok((kind, sender_id, recipient_id, envelope.payload.clone()))
+}

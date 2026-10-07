@@ -113,8 +113,8 @@ async fn test_tcp_mss_clamping_ipv6() {
     let outbound = tun.read_outbound().await.unwrap();
 
     let clamped_mss = u16::from_be_bytes([outbound[62], outbound[63]]);
-    // For IPv6, MTU 1200 - 60 = 1140 (clamped to <= 1160)
-    assert!(clamped_mss <= 1160);
+    // For IPv6, MTU 1200 - 60 = 1140 (clamped to <= TCP_MSS_IPV6_FLOOR)
+    assert_eq!(clamped_mss, ark_vpn::tun::TCP_MSS_IPV6_FLOOR);
 
     // Verify TCP checksum recalculated and non-zero
     let tcp_csum = u16::from_be_bytes([outbound[56], outbound[57]]);
