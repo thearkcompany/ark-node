@@ -61,6 +61,24 @@ pub enum BlobError {
 
     #[error("I/O error: {0}")]
     Io(String),
+
+    #[error("Invalid custody state transition from {from} to {to}")]
+    InvalidCustodyTransition { from: String, to: String },
+
+    #[error("File size {size} bytes exceeds maximum staged custody limit of {max} bytes (<25 MB)")]
+    IneligibleForStagedCustody { size: u64, max: u64 },
+
+    #[error("Invalid envelope format or kind: {0}")]
+    InvalidEnvelope(String),
+
+    #[error("Cryptographic signature verification failed: {0}")]
+    InvalidSignature(String),
+
+    #[error("Safe-ghost lock is active: eviction prevented (homelab ACK not confirmed, PoR challenges: {challenges}/{required})")]
+    SafeGhostLocked {
+        challenges: usize,
+        required: usize,
+    },
 }
 
 impl From<std::io::Error> for BlobError {
