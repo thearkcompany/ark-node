@@ -484,6 +484,24 @@ impl CompressedPatriciaTrie {
             path_steps,
         })
     }
+
+    /// Return all domain routing records contained in the trie.
+    pub fn all_records(&self) -> Vec<Arc<DomainRoutingRecord>> {
+        let mut records = Vec::with_capacity(self.count);
+        if let Some(root) = &self.root {
+            Self::collect_records(root, &mut records);
+        }
+        records
+    }
+
+    fn collect_records(node: &Arc<TrieNode>, records: &mut Vec<Arc<DomainRoutingRecord>>) {
+        if let Some(val) = &node.value {
+            records.push(val.clone());
+        }
+        for (_, child) in &node.children {
+            Self::collect_records(child, records);
+        }
+    }
 }
 
 fn common_prefix_len(a: &[u8], b: &[u8]) -> usize {

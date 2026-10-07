@@ -1,6 +1,7 @@
 pub mod anti_sybil;
 pub mod crypto_name;
 pub mod error;
+pub mod lifecycle;
 pub mod overlay;
 pub mod record;
 pub mod trie;
@@ -18,6 +19,10 @@ pub use crypto_name::{
     is_cryptographic_name, parse_cryptographic_name, verify_cryptographic_name,
 };
 pub use error::{DnsError, Result};
+pub use lifecycle::{
+    DomainLeaseState, LeaseLifecycleEngine, MockTimeProvider, SystemTimeProvider, TimeProvider,
+    GRACE_PERIOD_SECS, MAX_LEASE_DURATION_SECS,
+};
 pub use overlay::{OverlayRecord, PrivateOverlayStore, DNS_PRIVATE_OVERLAYS_KEYSPACE};
 pub use record::DomainRoutingRecord;
 pub use trie::{CompressedPatriciaTrie, MerkleProof, MerkleProofStep};
@@ -92,5 +97,10 @@ impl SovereignDnsTrie {
     /// Return an immutable snapshot of the underlying CompressedPatriciaTrie.
     pub fn snapshot(&self) -> Arc<CompressedPatriciaTrie> {
         self.inner.load_full()
+    }
+
+    /// Return all domain routing records contained in the trie.
+    pub fn all_records(&self) -> Vec<Arc<DomainRoutingRecord>> {
+        self.inner.load().all_records()
     }
 }

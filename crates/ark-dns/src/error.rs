@@ -42,6 +42,29 @@ pub enum DnsError {
 
     #[error("L2 verification failed: {0}")]
     L2VerificationFailed(String),
+
+    #[error("Grace period renewal unauthorized: domain '{fqdn}' is owned by 0x{current_owner:x?}, cannot be renewed by 0x{attempted_by:x?}")]
+    GracePeriodRenewalUnauthorized {
+        fqdn: String,
+        current_owner: [u8; 16],
+        attempted_by: [u8; 16],
+    },
+
+    #[error("Renewal unauthorized: domain '{fqdn}' is owned by 0x{current_owner:x?}, cannot be renewed by 0x{attempted_by:x?}")]
+    UnauthorizedRenewal {
+        fqdn: String,
+        current_owner: [u8; 16],
+        attempted_by: [u8; 16],
+    },
+
+    #[error("Domain '{fqdn}' is already active and owned by 0x{current_owner:x?}")]
+    DomainAlreadyActive {
+        fqdn: String,
+        current_owner: [u8; 16],
+    },
+
+    #[error("Invalid lease duration: {0}")]
+    InvalidLeaseDuration(String),
 }
 
 pub type Result<T> = std::result::Result<T, DnsError>;
