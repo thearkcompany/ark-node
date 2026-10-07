@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package ark.paas.v1;
+
+// WorkerConfig defines execution parameters and limits for a sovereign sandboxed worker.
+message WorkerConfig {
+  // Maximum linear memory ceiling in bytes (default 64MB = 67,108,864 bytes).
+  uint64 memory_limit_bytes = 1;
+  // Maximum CPU fuel units metered deterministically (default 10,000,000).
+  uint64 initial_cpu_fuel = 2;
+  // Maximum I/O fuel budget in bytes (default 1MB = 1,048,576 bytes).
+  uint64 initial_io_fuel = 3;
+  // Whether preemptive epoch deadline interruption is enabled.
+  bool enable_epoch_interruption = 4;
+  // Preemptive epoch deadline ticks budget.
+  uint64 epoch_deadline_ticks = 5;
+}
+
+// WorkerManifest describes a registered worker module, its capabilities, and trigger bindings.
+message WorkerManifest {
+  // Unique worker identifier (e.g. "worker-telemetry-collector").
+  string worker_id = 1;
+  // Semantic version string (e.g. "1.0.0").
+  string version = 2;
+  // SHA3-256 digest of the compiled Wasm bytecode.
+  bytes wasm_sha3_256 = 3;
+  // Worker execution parameters.
+  WorkerConfig config = 4;
+  // Exported guest entrypoint function name (default: "ark_main").
+  string entrypoint = 5;
+  // Bitmask of matching CoreTagMask for Trigger::EnvelopeReceived.
+  uint64 trigger_tag_mask = 6;
+  // Recurring cron expression for Trigger::Cron (e.g. "*/5 * * * *").
+  string cron_schedule = 7;
+  // Description or metadata.
+  string description = 8;
+}
+
+// ExecutionStatus defines the completion state of a worker execution.
+enum ExecutionStatus {
+  EXECUTION_STATUS_UNSPECIFIED = 0;
+  EXECUTION_STATUS_SUCCESS = 1;
+  EXECUTION_STATUS_CPU_FUEL_EXHAUSTED = 2;
+  EXECUTION_STATUS_IO_FUEL_EXHAUSTED = 3;
+  EXECUTION_STATUS_MEMORY_LIMIT_EXCEEDED = 4;
+  EXECUTION_STATUS_EPOCH_DEADLINE_EXCEEDED = 5;
+  EXECUTION_STATUS_TRAP = 6;
+  EXECUTION_STATUS_QUEUE_FAILURE = 7;
+}
+
+// ExecutionTelemetry contains execution resource receipts and timing telemetry.
+message ExecutionTelemetry {
+  // ID of the task that was executed.
+  string task_id = 1;
+  // Worker ID that ran the execution.
+  string worker_id = 2;
+  // Final execution status code.
+  ExecutionStatus status = 3;
+  // CPU fuel units consumed.
+  uint64 cpu_fuel_consumed = 4;
+  // CPU fuel remaining after execution.
+  uint64 cpu_fuel_remaining = 5;
+  // I/O fuel consumed in bytes.
+  uint64 io_fuel_consumed = 6;
+  // I/O fuel remaining in bytes.
+  uint64 io_fuel_remaining = 7;
+  // Return code from entrypoint if successful.
+  int32 return_code = 8;
+  // Execution duration in microseconds.
+  uint64 duration_micros = 9;
+  // Error message if execution failed.
+  string error_message = 10;
+  // Number of host log messages emitted.
+  uint32 log_count = 11;
+}
+
+// TriggerPayload specifies the event payload passed into a worker execution.
+message TriggerPayload {
+  // Type of trigger that initiated execution.
+  enum TriggerType {
+    TRIGGER_TYPE_UNSPECIFIED = 0;
+    TRIGGER_TYPE_CRON = 1;
+    TRIGGER_TYPE_ENVELOPE = 2;
+    TRIGGER_TYPE_MANUAL = 3;
+  }
+  TriggerType trigger_type = 1;
+  // Worker targeted for this execution.
+  string target_worker_id = 2;
+  // Raw event payload bytes (envelope bytes, cron context, or manual invocation arguments).
+  bytes payload = 3;
+  // Consensus timestamp when trigger fired (Unix seconds or PMT).
+  uint64 timestamp = 4;
+}

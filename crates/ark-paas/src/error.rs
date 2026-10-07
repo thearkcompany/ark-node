@@ -37,9 +37,16 @@ pub enum PaasError {
     #[error("Sandbox violation: {0}")]
     SandboxViolation(String),
 
+    #[error("Worker not found: '{0}'")]
+    WorkerNotFound(String),
+
+    #[error("Protobuf error: {0}")]
+    Protobuf(String),
+
     #[error("Queue error: {0}")]
     QueueError(String),
 }
+
 
 #[derive(Error, Debug)]
 pub enum ArkQueueError {

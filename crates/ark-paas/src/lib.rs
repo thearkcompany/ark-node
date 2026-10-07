@@ -7,17 +7,23 @@
 //! and Ark Cron (PMT-driven).
 
 pub mod cron;
+pub mod engine;
 pub mod error;
 pub mod host_abi;
 pub mod lease;
+pub mod proto;
 pub mod queue;
 pub mod traits;
 pub mod worker;
 
 pub use cron::{ArkCron, CronJob, CronSchedule, MockPmtClock, PmtClock, UtcDateTime};
+pub use engine::{CronPayload, EnvelopePayload, ManualPayload, PaasEngine, Trigger, TriggerSource};
 pub use error::{ArkQueueError, PaasError, QueueResult, Result};
 pub use host_abi::{register_host_abi, HostAbiState, DEFAULT_IO_FUEL_BYTES};
 pub use lease::JobLease;
+pub use proto::{
+    ExecutionStatus, ExecutionTelemetry, TriggerPayload, TriggerType, WorkerConfig, WorkerManifest,
+};
 pub use queue::{ArkQueue, QueueConfig, Task, TaskStatus};
 pub use traits::{
     BlobReaderBackend, EnvelopeEmitterBackend, InMemoryBlobReader, InMemoryEnvelopeEmitter,
@@ -27,19 +33,3 @@ pub use worker::{
     WasmWorker, WasmWorkerConfig, WorkerStoreData, DEFAULT_CPU_FUEL, DEFAULT_EPOCH_TICKS,
     DEFAULT_MEMORY_LIMIT_BYTES,
 };
-
-pub struct PaasEngine {
-    // Wasmtime, queue, and scheduler state
-}
-
-impl PaasEngine {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
-impl Default for PaasEngine {
-    fn default() -> Self {
-        Self::new()
-    }
-}

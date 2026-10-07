@@ -154,3 +154,16 @@ impl PmtClockBackend for InMemoryPmtClock {
         *self.time.lock().unwrap()
     }
 }
+
+impl crate::cron::PmtClock for InMemoryPmtClock {
+    fn now_pmt(&self) -> u64 {
+        *self.time.lock().unwrap()
+    }
+}
+
+impl PmtClockBackend for crate::cron::MockPmtClock {
+    fn now_pmt(&self) -> u64 {
+        crate::cron::PmtClock::now_pmt(self)
+    }
+}
+
