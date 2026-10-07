@@ -9,6 +9,9 @@ pub const TAG_SHARD_INDEX: u32 = 0x0015;
 /// TLV Tag for Proof-of-Retrievability Challenge Seed (0x0016).
 pub const TAG_CHALLENGE_SEED: u32 = 0x0016;
 
+/// TLV Tag for 4 KB Sub-Block Index (0x0017).
+pub const TAG_SUB_BLOCK_INDEX: u32 = 0x0017;
+
 /// TLV Tag for Layer 2 Escrow Contract (0x000F).
 pub const TAG_L2_CONTRACT: u32 = 0x000F;
 
@@ -20,6 +23,9 @@ pub const KIND_HOMELAB_ACK: u32 = 0x0000_2011;
 
 /// Envelope Kind for DePIN Challenge (0x4000_0002).
 pub const KIND_DEPIN_CHALLENGE: u32 = 0x4000_0002;
+
+/// Envelope Kind for DePIN Challenge Response (0x4000_0003).
+pub const KIND_DEPIN_RESPONSE: u32 = 0x4000_0003;
 
 /// Pre-coding sub-chunk size for Tier 1 Merkle tree: 64 KB (65,536 bytes).
 pub const SUB_CHUNK_SIZE: usize = 64 * 1024;

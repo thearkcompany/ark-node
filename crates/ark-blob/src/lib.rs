@@ -9,6 +9,7 @@ pub mod ghost_lock;
 pub mod manifest;
 pub mod matrix;
 pub mod merkle;
+pub mod por;
 pub mod store;
 
 pub use cas::{CasDiskStore, StoragePaths};
@@ -22,6 +23,10 @@ pub use merkle::{
     compute_blob_cid, compute_merkle_root, compute_shard_merkle_roots,
     compute_single_shard_root, hash_pair, MerkleProofNode, ShardMerkleProof,
     SiblingPosition,
+};
+pub use por::{
+    compute_sub_block_kmac, derive_sub_block_index, generate_depin_challenge,
+    verify_depin_challenge_response, DePINChallenge, DePINChallengeResponse,
 };
 pub use store::{HybridBlobStore, KEYSPACE_BLOB_MANIFESTS, KEYSPACE_BLOB_SHARDS};
 
