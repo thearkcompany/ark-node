@@ -1,19 +1,25 @@
 //! Cauchy RS 10+4, Two-Tier Merkle Engine e Blob Storage (GCP-10, ACP-0010).
 
+pub mod cas;
 pub mod constants;
 pub mod error;
 pub mod gf;
+pub mod manifest;
 pub mod matrix;
 pub mod merkle;
+pub mod store;
 
+pub use cas::{CasDiskStore, StoragePaths};
 pub use constants::*;
 pub use error::{BlobError, Result};
 pub use gf::{mul_slice, mul_slice_add};
+pub use manifest::{BlobManifest, ShardStatus};
 pub use merkle::{
     compute_blob_cid, compute_merkle_root, compute_shard_merkle_roots,
     compute_single_shard_root, hash_pair, MerkleProofNode, ShardMerkleProof,
     SiblingPosition,
 };
+pub use store::{HybridBlobStore, KEYSPACE_BLOB_MANIFESTS, KEYSPACE_BLOB_SHARDS};
 
 use matrix::Matrix;
 

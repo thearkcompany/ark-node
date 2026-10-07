@@ -40,11 +40,39 @@ pub enum BlobError {
     #[error("Shard Merkle proof verification failed")]
     InvalidMerkleProof,
 
+    #[error("Shard not found: {0}")]
+    ShardNotFound(String),
+
+    #[error("Corrupted shard {hash}: expected hash {expected}, got {got}")]
+    CorruptedShard {
+        hash: String,
+        expected: String,
+        got: String,
+    },
+
+    #[error("Manifest not found for blob CID: {0}")]
+    ManifestNotFound(String),
+
+    #[error("Storage error: {0}")]
+    Storage(String),
+
     #[error("Proof serialization error: {0}")]
     SerializationError(String),
 
     #[error("I/O error: {0}")]
     Io(String),
+}
+
+impl From<std::io::Error> for BlobError {
+    fn from(err: std::io::Error) -> Self {
+        BlobError::Io(err.to_string())
+    }
+}
+
+impl From<ark_storage::ArkStorageError> for BlobError {
+    fn from(err: ark_storage::ArkStorageError) -> Self {
+        BlobError::Storage(err.to_string())
+    }
 }
 
 pub type Result<T> = std::result::Result<T, BlobError>;
