@@ -118,10 +118,59 @@ impl DePINChallenge {
         .map_err(|e| BlobError::SerializationError(e.to_string()))
     }
 
+    /// Converts this challenge to Protobuf wire type `DepinPorChallenge`.
+    pub fn to_proto(&self) -> ark_protocol::DepinPorChallenge {
+        ark_protocol::DepinPorChallenge {
+            blob_cid: self.blob_cid.to_vec(),
+            shard_index: self.shard_index,
+            sub_block_index: self.sub_block_index,
+            challenge_seed: self.seed.to_vec(),
+        }
+    }
+
+    /// Converts a Protobuf `DepinPorChallenge` into `DePINChallenge`.
+    pub fn from_proto(proto: &ark_protocol::DepinPorChallenge) -> Result<Self> {
+        if proto.blob_cid.len() != 32 {
+            return Err(BlobError::SerializationError("Invalid proto blob_cid length".into()));
+        }
+        let mut blob_cid = [0u8; 32];
+        blob_cid.copy_from_slice(&proto.blob_cid);
+
+        if proto.challenge_seed.len() != 32 {
+            return Err(BlobError::SerializationError("Invalid proto challenge_seed length".into()));
+        }
+        let mut seed = [0u8; 32];
+        seed.copy_from_slice(&proto.challenge_seed);
+
+        Ok(Self {
+            blob_cid,
+            shard_index: proto.shard_index,
+            sub_block_index: proto.sub_block_index,
+            seed,
+        })
+    }
+
+    /// Serializes challenge to Protobuf binary bytes.
+    pub fn to_proto_bytes(&self) -> Vec<u8> {
+        use ark_protocol::prost::Message;
+        self.to_proto().encode_to_vec()
+    }
+
+    /// Deserializes challenge from Protobuf binary bytes.
+    pub fn from_proto_bytes(bytes: &[u8]) -> Result<Self> {
+        use ark_protocol::prost::Message;
+        let proto = ark_protocol::DepinPorChallenge::decode(bytes)
+            .map_err(|e| BlobError::SerializationError(e.to_string()))?;
+        Self::from_proto(&proto)
+    }
+
     /// Extracts a `DePINChallenge` from a canonical `ArkEnvelope`.
     pub fn from_envelope(envelope: &ArkEnvelope) -> Result<Self> {
-        // First try to parse payload if present
+        // First try to parse payload as protobuf or json
         if !envelope.payload.is_empty() {
+            if let Ok(challenge) = Self::from_proto_bytes(&envelope.payload) {
+                return Ok(challenge);
+            }
             if let Ok(challenge) = serde_json::from_slice::<Self>(&envelope.payload) {
                 return Ok(challenge);
             }
@@ -311,8 +360,63 @@ impl DePINChallengeResponse {
         .map_err(|e| BlobError::SerializationError(e.to_string()))
     }
 
+    /// Converts this response to Protobuf wire type `DepinPorResponse`.
+    pub fn to_proto(&self) -> ark_protocol::DepinPorResponse {
+        ark_protocol::DepinPorResponse {
+            blob_cid: self.blob_cid.to_vec(),
+            shard_index: self.shard_index,
+            sub_block_index: self.sub_block_index,
+            sub_block_payload: self.sub_block.clone(),
+            kmac_digest: self.mac.to_vec(),
+            merkle_proof_bytes: self.proof.to_bytes(),
+        }
+    }
+
+    /// Converts a Protobuf `DepinPorResponse` into `DePINChallengeResponse`.
+    pub fn from_proto(proto: &ark_protocol::DepinPorResponse) -> Result<Self> {
+        if proto.blob_cid.len() != 32 {
+            return Err(BlobError::SerializationError("Invalid proto blob_cid length".into()));
+        }
+        let mut blob_cid = [0u8; 32];
+        blob_cid.copy_from_slice(&proto.blob_cid);
+
+        if proto.kmac_digest.len() != 32 {
+            return Err(BlobError::SerializationError("Invalid proto kmac_digest length".into()));
+        }
+        let mut mac = [0u8; 32];
+        mac.copy_from_slice(&proto.kmac_digest);
+
+        let proof = ShardMerkleProof::from_bytes(&proto.merkle_proof_bytes)?;
+
+        Ok(Self {
+            blob_cid,
+            shard_index: proto.shard_index,
+            sub_block_index: proto.sub_block_index,
+            sub_block: proto.sub_block_payload.clone(),
+            mac,
+            proof,
+        })
+    }
+
+    /// Serializes response to Protobuf binary bytes.
+    pub fn to_proto_bytes(&self) -> Vec<u8> {
+        use ark_protocol::prost::Message;
+        self.to_proto().encode_to_vec()
+    }
+
+    /// Deserializes response from Protobuf binary bytes.
+    pub fn from_proto_bytes(bytes: &[u8]) -> Result<Self> {
+        use ark_protocol::prost::Message;
+        let proto = ark_protocol::DepinPorResponse::decode(bytes)
+            .map_err(|e| BlobError::SerializationError(e.to_string()))?;
+        Self::from_proto(&proto)
+    }
+
     /// Extracts a `DePINChallengeResponse` from a canonical `ArkEnvelope`.
     pub fn from_envelope(envelope: &ArkEnvelope) -> Result<Self> {
+        if let Ok(res) = Self::from_proto_bytes(&envelope.payload) {
+            return Ok(res);
+        }
         Self::from_bytes(&envelope.payload)
     }
 }

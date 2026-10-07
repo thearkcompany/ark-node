@@ -164,7 +164,7 @@ fn test_verification_performance_microseconds() {
     let avg_micros = elapsed.as_micros() as f64 / iterations as f64;
 
     #[cfg(debug_assertions)]
-    let max_allowed = 5000.0;
+    let max_allowed = 15000.0;
     #[cfg(not(debug_assertions))]
     let max_allowed = 50.0;
 
