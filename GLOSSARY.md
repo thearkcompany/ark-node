@@ -142,4 +142,3 @@ An asynchronous, causally ordered job bus persisted in `ark-storage` (Fjall LSM)
 A deterministic, event-driven scheduler that triggers recurrent guest Wasm worker invocations based on peer consensus time (Peer-Median-Time / PMT) rather than local wall-clock time, strictly skipping missed intervals upon reconnect to prevent execution bursts.
 
 
-
