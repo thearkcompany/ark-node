@@ -7,6 +7,7 @@ edition = "2021"
 ark-core = { path = "../ark-core" }
 ark-protocol = { path = "../ark-protocol" }
 ark-storage = { path = "../ark-storage" }
+ark-time = { path = "../ark-time" }
 wasmtime = "25.0.3"
 dashmap = "6.2"
 parking_lot = "0.12"

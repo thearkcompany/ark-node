@@ -7,7 +7,7 @@ use crate::error::{PaasError, Result};
 use crate::traits::{
     BlobReaderBackend, EnvelopeEmitterBackend, InMemoryBlobReader,
     InMemoryEnvelopeEmitter, InMemoryKvStore, InMemoryPmtClock,
-    KvStoreBackend, PmtClockBackend,
+    KvStoreBackend,
 };
 use crate::worker::WorkerStoreData;
 
@@ -21,7 +21,7 @@ pub struct HostAbiState {
     pub kv_backend: Arc<dyn KvStoreBackend>,
     pub blob_backend: Arc<dyn BlobReaderBackend>,
     pub envelope_backend: Arc<dyn EnvelopeEmitterBackend>,
-    pub pmt_backend: Arc<dyn PmtClockBackend>,
+    pub pmt_backend: Arc<dyn ark_time::PmtClock>,
     pub logs: Vec<(u32, String)>,
 }
 
@@ -30,7 +30,7 @@ impl HostAbiState {
         kv_backend: Arc<dyn KvStoreBackend>,
         blob_backend: Arc<dyn BlobReaderBackend>,
         envelope_backend: Arc<dyn EnvelopeEmitterBackend>,
-        pmt_backend: Arc<dyn PmtClockBackend>,
+        pmt_backend: Arc<dyn ark_time::PmtClock>,
         io_fuel_limit: usize,
     ) -> Self {
         Self {

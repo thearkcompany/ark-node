@@ -6,49 +6,14 @@
 //! catch-up storms.
 
 use std::str::FromStr;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{PaasError, Result};
 use crate::queue::{ArkQueue, Task};
-
-/// Pluggable consensus time source (ark-time / Peer-Median-Time).
-pub trait PmtClock: Send + Sync {
-    /// Returns current Peer-Median-Time in Unix seconds.
-    fn now_pmt(&self) -> u64;
-}
-
-/// Deterministic mock clock allowing manual logical time jumps in tests.
-#[derive(Debug, Default)]
-pub struct MockPmtClock {
-    current_time: AtomicU64,
-}
-
-impl MockPmtClock {
-    pub fn new(initial_time_secs: u64) -> Self {
-        Self {
-            current_time: AtomicU64::new(initial_time_secs),
-        }
-    }
-
-    /// Set PMT to an exact Unix timestamp in seconds.
-    pub fn set_time(&self, time_secs: u64) {
-        self.current_time.store(time_secs, Ordering::SeqCst);
-    }
-
-    /// Advance PMT forward by a given duration in seconds.
-    pub fn advance(&self, delta_secs: u64) -> u64 {
-        self.current_time.fetch_add(delta_secs, Ordering::SeqCst) + delta_secs
-    }
-}
-
-impl PmtClock for MockPmtClock {
-    fn now_pmt(&self) -> u64 {
-        self.current_time.load(Ordering::SeqCst)
-    }
-}
+pub use ark_time::PmtClock;
+pub use ark_time::MockPmtClock;
 
 /// Standard 5-field cron schedule: minute, hour, day of month, month, day of week.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

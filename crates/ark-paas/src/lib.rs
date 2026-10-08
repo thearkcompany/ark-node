@@ -27,7 +27,7 @@ pub use proto::{
 pub use queue::{ArkQueue, QueueConfig, Task, TaskStatus};
 pub use traits::{
     BlobReaderBackend, EnvelopeEmitterBackend, InMemoryBlobReader, InMemoryEnvelopeEmitter,
-    InMemoryKvStore, InMemoryPmtClock, KvStoreBackend, PmtClockBackend,
+    InMemoryKvStore, InMemoryPmtClock, KvStoreBackend,
 };
 pub use worker::{
     WasmWorker, WasmWorkerConfig, WorkerStoreData, DEFAULT_CPU_FUEL, DEFAULT_EPOCH_TICKS,

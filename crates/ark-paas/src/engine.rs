@@ -29,7 +29,7 @@ use crate::proto::{
 };
 use crate::queue::{ArkQueue, Task};
 use crate::traits::{
-    BlobReaderBackend, EnvelopeEmitterBackend, InMemoryPmtClock, KvStoreBackend, PmtClockBackend,
+    BlobReaderBackend, EnvelopeEmitterBackend, InMemoryPmtClock, KvStoreBackend,
 };
 use crate::worker::{WasmWorker, WasmWorkerConfig};
 
@@ -83,7 +83,7 @@ struct RegisteredWorker {
 }
 
 /// Unified Sovereign Compute Engine facade.
-pub struct PaasEngine<C: PmtClock + PmtClockBackend + 'static = InMemoryPmtClock> {
+pub struct PaasEngine<C: PmtClock + 'static = InMemoryPmtClock> {
     queue: Arc<ArkQueue>,
     cron: Arc<ArkCron<C>>,
     clock: Arc<C>,
@@ -95,7 +95,7 @@ pub struct PaasEngine<C: PmtClock + PmtClockBackend + 'static = InMemoryPmtClock
     execution_seq: AtomicU64,
 }
 
-impl<C: PmtClock + PmtClockBackend + 'static> PaasEngine<C> {
+impl<C: PmtClock + 'static> PaasEngine<C> {
     /// Create a new PaasEngine with custom components.
     pub fn new(
         queue: Arc<ArkQueue>,
@@ -453,7 +453,7 @@ impl<C: PmtClock + PmtClockBackend + 'static> PaasEngine<C> {
     }
 }
 
-impl<C: PmtClock + PmtClockBackend + 'static> TriggerSource for PaasEngine<C> {
+impl<C: PmtClock + 'static> TriggerSource for PaasEngine<C> {
     fn ingest_trigger(&self, trigger: Trigger) -> Result<Vec<String>> {
         let current_pmt = PmtClock::now_pmt(&*self.clock);
         let seq = self.execution_seq.fetch_add(1, Ordering::SeqCst);
