@@ -14,6 +14,7 @@ members = [
     "crates/ark-vpn",
     "crates/ark-wot",
     "crates/ark-paas",
+    "crates/ark-runtime",
     "satelites/ark-worker-wasm",
     ".",
 ]
@@ -39,6 +40,7 @@ ark-dns = { path = "crates/ark-dns" }
 ark-vpn = { path = "crates/ark-vpn" }
 ark-wot = { path = "crates/ark-wot" }
 ark-paas = { path = "crates/ark-paas" }
+ark-runtime = { path = "crates/ark-runtime" }
 clap = { version = "4.5", features = ["derive"] }
 tokio = { version = "1.39", features = ["full"] }
 tracing = "0.1"

@@ -1,11 +1,13 @@
-use crate::identity_resolver::{get_default_identity_path, resolve_identity, ResolvedIdentitySource};
+use crate::identity_resolver::{get_default_identity_path, resolve_identity};
 use crate::ping::ping_peer;
 use ark_crypto::identity::PersistentIdentity;
+use ark_runtime::{NodeHandle, NodeRuntimeBuilder, Role as RuntimeRole};
 use clap::{Parser, Subcommand, ValueEnum};
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use tracing::info;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(name = "ark-node")]
 #[command(about = "Universal sovereign daemon for ARK Protocol v1", long_about = None)]
 pub struct Cli {
@@ -23,6 +25,26 @@ pub struct Cli {
     #[arg(short, long)]
     pub data_dir: Option<PathBuf>,
 
+    /// Enable Sovereign DNS subsystem engine
+    #[arg(long, default_value_t = true)]
+    pub enable_dns: bool,
+
+    /// Enable Distributed Blob storage / PoR engine
+    #[arg(long, default_value_t = true)]
+    pub enable_blob: bool,
+
+    /// Enable Sovereign PaaS / WASM worker engine
+    #[arg(long, default_value_t = true)]
+    pub enable_paas: bool,
+
+    /// Enable Overlay VPN mesh engine
+    #[arg(long, default_value_t = true)]
+    pub enable_vpn: bool,
+
+    /// Enable Web-of-Trust Sybil resistance engine
+    #[arg(long, default_value_t = true)]
+    pub enable_wot: bool,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
@@ -35,7 +57,18 @@ pub enum Role {
     Bootstrap,
 }
 
-#[derive(Subcommand, Debug)]
+impl From<Role> for RuntimeRole {
+    fn from(r: Role) -> Self {
+        match r {
+            Role::Client => RuntimeRole::Client,
+            Role::Server => RuntimeRole::Server,
+            Role::Relay => RuntimeRole::Relay,
+            Role::Bootstrap => RuntimeRole::Bootstrap,
+        }
+    }
+}
+
+#[derive(Subcommand, Debug, Clone)]
 pub enum Commands {
     /// Generate a fresh Post-Quantum keypair (FN-DSA + ML-KEM)
     Keygen {
@@ -50,6 +83,46 @@ pub enum Commands {
         #[arg(short, long)]
         target: String,
     },
+}
+
+impl Cli {
+    pub fn build_runtime(&self) -> anyhow::Result<NodeRuntimeBuilder> {
+        let env_var = std::env::var("ARK_IDENTITY_KEY").ok();
+        let default_home = get_default_identity_path();
+
+        let (identity, source) = resolve_identity(
+            self.identity.as_deref(),
+            env_var.as_deref(),
+            default_home.as_deref(),
+        )?;
+
+        info!("Starting ARK Node with role: {:?}", self.role);
+        info!("Binding on: {}", self.bind);
+        info!("Active Node ArkID: {}", identity.ark_id_hex());
+        info!("Identity Source: {:?}", source);
+
+        let data_dir = self.data_dir.clone().unwrap_or_else(|| {
+            std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .map(|h| h.join(".ark").join("storage"))
+                .unwrap_or_else(|| PathBuf::from("./ark-data"))
+        });
+
+        let bind_addr: SocketAddr = self.bind.parse().unwrap_or_else(|_| "0.0.0.0:8443".parse().unwrap());
+
+        let builder = NodeRuntimeBuilder::new()
+            .bind_addr(bind_addr)
+            .data_dir(data_dir)
+            .role(self.role.into())
+            .identity(identity)
+            .enable_dns(self.enable_dns)
+            .enable_blob(self.enable_blob)
+            .enable_paas(self.enable_paas)
+            .enable_vpn(self.enable_vpn)
+            .enable_wot(self.enable_wot);
+
+        Ok(builder)
+    }
 }
 
 pub async fn execute() -> anyhow::Result<()> {
@@ -89,53 +162,24 @@ pub async fn execute() -> anyhow::Result<()> {
             }
         }
         None => {
-            let env_var = std::env::var("ARK_IDENTITY_KEY").ok();
-            let default_home = get_default_identity_path();
+            let builder = cli.build_runtime()?;
+            let handle: NodeHandle = builder.spawn().await
+                .map_err(|e| anyhow::anyhow!("Failed to spawn NodeRuntime: {:?}", e))?;
 
-            let (identity, source) = resolve_identity(
-                cli.identity.as_deref(),
-                env_var.as_deref(),
-                default_home.as_deref(),
-            )?;
+            info!("NodeRuntime active and listening on {}", handle.local_addr());
 
-            info!("Starting ARK Node with role: {:?}", cli.role);
-            info!("Binding on: {}", cli.bind);
-            info!("Active Node ArkID: {}", identity.ark_id_hex());
-            info!("Identity Source: {:?}", source);
-
-            match source {
-                ResolvedIdentitySource::Ephemeral => {
-                    info!("Running with ephemeral in-memory identity (session only)");
-                }
-                ResolvedIdentitySource::Cli => {
-                    info!("Loaded identity from CLI option: {:?}", cli.identity);
-                }
-                ResolvedIdentitySource::Env => {
-                    info!("Loaded identity from ARK_IDENTITY_KEY");
-                }
-                ResolvedIdentitySource::DefaultHome => {
-                    info!("Loaded identity from default path: {:?}", default_home);
+            // Signal handler for SIGINT / SIGTERM
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {
+                    info!("Received SIGINT/SIGTERM, initiating graceful shutdown...");
                 }
             }
 
-            // Initialize storage engine
-            let storage_path = cli.data_dir.unwrap_or_else(|| {
-                std::env::var_os("HOME")
-                    .map(PathBuf::from)
-                    .map(|h| h.join(".ark").join("storage"))
-                    .unwrap_or_else(|| PathBuf::from("./ark-data"))
-            });
-            let storage = std::sync::Arc::new(ark_storage::StorageEngine::open(&storage_path, ark_storage::StorageConfig::frugal())?);
-            info!("Storage engine initialized at {:?} (<= 64 MB budget)", storage.path());
-            let _sweeper = ark_storage::StorageEngine::spawn_background_sweeper(
-                storage.clone(),
-                std::time::Duration::from_secs(60),
-            );
-
-            info!("Node active in {:?} mode. Awaiting connections...", cli.role);
+            handle.shutdown().await
+                .map_err(|e| anyhow::anyhow!("Error during graceful shutdown: {:?}", e))?;
+            info!("Node shutdown cleanly.");
         }
     }
 
     Ok(())
 }
-
