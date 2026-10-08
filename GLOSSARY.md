@@ -47,6 +47,10 @@ A fixed-memory ($\le 24\text{ MB}$) anti-replay structure composed of two genera
 ### Peer-Median-Time (PMT)
 A decentralized, NTP-independent time synchronization mechanism computed in user-space as the median offset across direct peer connections, enforcing a strict maximum drift window of $\pm 30\text{ seconds}$.
 
+### PmtClock
+The canonical capability trait (`PmtClock`) defined in `ark-time` providing network consensus time (`now_pmt() -> u64`) to protocol subsystems (WoT, PaaS cron, DNS lease lifecycles), with standard adapters `SystemPmtClock` and `MockPmtClock`.
+
+
 ## Persistence & Storage Engine (GCP-06)
 
 ### Retention Class

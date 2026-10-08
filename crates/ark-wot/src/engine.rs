@@ -16,31 +16,70 @@ pub struct WotEngine {
     local_root: [u8; 32],
     store: Arc<WotStore>,
     mst_engine: Arc<MstEngine>,
+    clock: Arc<dyn ark_time::PmtClock>,
 }
 
 impl WotEngine {
-    /// Opens or initialises a WotEngine with underlying Fjall LSM storage and MST CRDT.
-    pub fn open(local_root: [u8; 32], storage: Arc<StorageEngine>) -> Result<Self> {
+    /// Initialises a WotEngine with explicit PmtClock and underlying components.
+    pub fn new(
+        local_root: [u8; 32],
+        store: Arc<WotStore>,
+        mst_engine: Arc<MstEngine>,
+        clock: Arc<dyn ark_time::PmtClock>,
+    ) -> Self {
+        Self {
+            local_root,
+            store,
+            mst_engine,
+            clock,
+        }
+    }
+
+    /// Opens or initialises a WotEngine with underlying Fjall LSM storage, MST CRDT, and PmtClock.
+    pub fn open(
+        local_root: [u8; 32],
+        storage: Arc<StorageEngine>,
+        clock: Arc<dyn ark_time::PmtClock>,
+    ) -> Result<Self> {
         let store = Arc::new(WotStore::open(local_root, Arc::clone(&storage))?);
         let mst_engine = Arc::new(
             MstEngine::open(Arc::clone(&storage), MstConfig::default())
                 .map_err(|e| ark_core::error::ArkError::Internal(e.to_string()))?,
         );
 
-        Ok(Self {
-            local_root,
-            store,
-            mst_engine,
-        })
+        Ok(Self::new(local_root, store, mst_engine, clock))
+    }
+
+    pub fn clock(&self) -> &Arc<dyn ark_time::PmtClock> {
+        &self.clock
     }
 
     pub fn local_root(&self) -> &[u8; 32] {
         &self.local_root
     }
 
-    /// Evaluates trust score, topological distance, and TrustTier for a target identity.
+    /// Evaluates trust score, topological distance, and TrustTier for a target identity relative to local root,
+    /// querying the internal PmtClock for current consensus time.
     pub fn evaluate_trust(&self, target: &[u8; 32]) -> TrustEvaluation {
-        self.store.evaluate_cached(target, 0)
+        let current_pmt = self.clock.now_pmt();
+        self.store.evaluate_cached(target, current_pmt)
+    }
+
+    /// Evaluates trust score between an issuer and subject against consensus time queried from the internal PmtClock.
+    pub fn evaluate_trust_pair(&self, issuer_id: &[u8; 32], subject_id: &[u8; 32]) -> Result<f64> {
+        let current_pmt = self.clock.now_pmt();
+        // Check if there is an active attestation between issuer and subject
+        for att in self.store.get_all_attestations() {
+            if &att.issuer_id == issuer_id && &att.subject_id == subject_id {
+                let score = crate::temporal::compute_decayed_weight(
+                    att.score_weight,
+                    att.issued_at_pmt,
+                    current_pmt,
+                );
+                return Ok(score);
+            }
+        }
+        Ok(0.0)
     }
 
     /// Evaluates trust score with explicit Peer-Median-Time (PMT) timestamp for time-decay.

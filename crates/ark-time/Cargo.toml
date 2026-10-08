@@ -3,6 +3,10 @@ name = "ark-time"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+test-utils = []
+
 [dependencies]
 ark-core = { path = "../ark-core" }
 cuckoofilter = "0.5"

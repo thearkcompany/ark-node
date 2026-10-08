@@ -25,12 +25,6 @@ pub trait EnvelopeEmitterBackend: Send + Sync {
     fn emit(&self, envelope_bytes: &[u8]) -> Result<()>;
 }
 
-/// Trait for querying Peer-Median-Time (PMT) consensus timestamp.
-pub trait PmtClockBackend: Send + Sync {
-    /// Current PMT timestamp in seconds (or unix seconds).
-    fn now_pmt(&self) -> u64;
-}
-
 /// In-memory mock implementation of `KvStoreBackend`.
 #[derive(Default, Clone)]
 pub struct InMemoryKvStore {
@@ -125,7 +119,7 @@ impl EnvelopeEmitterBackend for InMemoryEnvelopeEmitter {
     }
 }
 
-/// In-memory mock implementation of `PmtClockBackend`.
+/// In-memory mock implementation of `PmtClock`.
 #[derive(Clone)]
 pub struct InMemoryPmtClock {
     time: Arc<Mutex<u64>>,
@@ -149,21 +143,9 @@ impl Default for InMemoryPmtClock {
     }
 }
 
-impl PmtClockBackend for InMemoryPmtClock {
+impl ark_time::PmtClock for InMemoryPmtClock {
     fn now_pmt(&self) -> u64 {
         *self.time.lock().unwrap()
-    }
-}
-
-impl crate::cron::PmtClock for InMemoryPmtClock {
-    fn now_pmt(&self) -> u64 {
-        *self.time.lock().unwrap()
-    }
-}
-
-impl PmtClockBackend for crate::cron::MockPmtClock {
-    fn now_pmt(&self) -> u64 {
-        crate::cron::PmtClock::now_pmt(self)
     }
 }
 

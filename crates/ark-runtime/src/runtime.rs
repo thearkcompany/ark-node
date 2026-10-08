@@ -94,6 +94,8 @@ impl NodeRuntimeBuilder {
         )?);
 
         let local_root = self.identity.as_ref().map(|id| id.ark_id).unwrap_or([0u8; 32]);
+        // Consensus time initialization
+        let peer_median = Arc::new(ark_time::PeerMedianTime::new());
 
         // Initialize DNS Engine if enabled
         let dns_engine = if self.config.enable_dns {
@@ -108,10 +110,11 @@ impl NodeRuntimeBuilder {
             let overlay_store = Arc::new(ark_dns::PrivateOverlayStore::new(&storage)
                 .map_err(|e| ArkRuntimeError::Internal(format!("Dns init error: {:?}", e)))?);
             let l2: Arc<dyn ark_dns::L2ContractVerifier> = Arc::new(PermissiveDnsVerifier);
+            let dns_clock = Arc::new(ark_time::SystemPmtClock::new(Arc::clone(&peer_median)));
             let dns = ark_dns::SovereignDnsEngine::builder()
                 .overlay_store(overlay_store)
                 .trie(Arc::new(ark_dns::SovereignDnsTrie::new()))
-                .time_provider(Arc::new(ark_dns::SystemTimeProvider))
+                .time_provider(dns_clock)
                 .l2_verifier(Arc::new(l2))
                 .default_caller_ark_id(local_root)
                 .build()
@@ -169,7 +172,8 @@ impl NodeRuntimeBuilder {
 
         // Initialize WoT Engine if enabled
         let wot_engine = if self.config.enable_wot {
-            let wot = ark_wot::WotEngine::open(local_root, storage.clone())
+            let clock = Arc::new(ark_time::SystemPmtClock::new(Arc::clone(&peer_median)));
+            let wot = ark_wot::WotEngine::open(local_root, storage.clone(), clock)
                 .map_err(|e| ArkRuntimeError::Internal(format!("Wot error: {:?}", e)))?;
             Some(Arc::new(wot))
         } else {
