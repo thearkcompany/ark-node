@@ -94,6 +94,8 @@ impl NodeRuntimeBuilder {
         )?);
 
         let local_root = self.identity.as_ref().map(|id| id.ark_id).unwrap_or([0u8; 32]);
+        // Consensus time initialization
+        let peer_median = Arc::new(ark_time::PeerMedianTime::new());
 
         // Initialize DNS Engine if enabled
         let dns_engine = if self.config.enable_dns {
@@ -169,7 +171,8 @@ impl NodeRuntimeBuilder {
 
         // Initialize WoT Engine if enabled
         let wot_engine = if self.config.enable_wot {
-            let wot = ark_wot::WotEngine::open(local_root, storage.clone())
+            let clock = Arc::new(ark_time::SystemPmtClock::new(Arc::clone(&peer_median)));
+            let wot = ark_wot::WotEngine::open(local_root, storage.clone(), clock)
                 .map_err(|e| ArkRuntimeError::Internal(format!("Wot error: {:?}", e)))?;
             Some(Arc::new(wot))
         } else {

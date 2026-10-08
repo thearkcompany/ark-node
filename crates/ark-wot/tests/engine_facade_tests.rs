@@ -21,8 +21,9 @@ fn test_wot_engine_e2e_lifecycle_and_subsystem_adapters() {
 
     let dir = tempdir().unwrap();
     let storage = Arc::new(StorageEngine::open(dir.path(), StorageConfig::default()).unwrap());
+    let clock = Arc::new(ark_time::MockPmtClock::new(1000));
 
-    let engine = WotEngine::open(local_id, storage).unwrap();
+    let engine = WotEngine::open(local_id, storage, clock.clone()).unwrap();
 
     // 1. Initial trust evaluation: unknown peer is Untrusted
     let eval_init = engine.evaluate_trust(&peer_a);
@@ -57,6 +58,18 @@ fn test_wot_engine_e2e_lifecycle_and_subsystem_adapters() {
     assert!(engine.is_vpn_allowed(&peer_a));
     assert!(engine.is_storage_allowed(&peer_a));
     assert!(!engine.is_compute_allowed(&peer_a));
+
+    // Test evaluate_trust_pair and time decay via MockPmtClock
+    let pair_score_initial = engine.evaluate_trust_pair(&local_id, &peer_a).unwrap();
+    assert!((pair_score_initial - 0.9).abs() < 1e-4);
+
+    // Advance clock by half-life (30 days) and verify decay
+    clock.advance(30 * 86400);
+    let pair_score_decayed = engine.evaluate_trust_pair(&local_id, &peer_a).unwrap();
+    assert!((pair_score_decayed - 0.45).abs() < 1e-4);
+
+    // Reset clock back for rest of lifecycle test
+    clock.set_time(1000);
 
     // 3. Issue attestation peer_a -> peer_b
     let mut scopes_b = CapabilityScopes::empty();
