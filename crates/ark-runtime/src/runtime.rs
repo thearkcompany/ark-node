@@ -110,10 +110,11 @@ impl NodeRuntimeBuilder {
             let overlay_store = Arc::new(ark_dns::PrivateOverlayStore::new(&storage)
                 .map_err(|e| ArkRuntimeError::Internal(format!("Dns init error: {:?}", e)))?);
             let l2: Arc<dyn ark_dns::L2ContractVerifier> = Arc::new(PermissiveDnsVerifier);
+            let dns_clock = Arc::new(ark_time::SystemPmtClock::new(Arc::clone(&peer_median)));
             let dns = ark_dns::SovereignDnsEngine::builder()
                 .overlay_store(overlay_store)
                 .trie(Arc::new(ark_dns::SovereignDnsTrie::new()))
-                .time_provider(Arc::new(ark_dns::SystemTimeProvider))
+                .time_provider(dns_clock)
                 .l2_verifier(Arc::new(l2))
                 .default_caller_ark_id(local_root)
                 .build()
