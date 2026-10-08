@@ -29,6 +29,12 @@ impl SystemPmtClock {
     }
 }
 
+impl Default for SystemPmtClock {
+    fn default() -> Self {
+        Self::new(Arc::new(PeerMedianTime::new()))
+    }
+}
+
 impl PmtClock for SystemPmtClock {
     fn now_pmt(&self) -> u64 {
         let local_secs = SystemTime::now()

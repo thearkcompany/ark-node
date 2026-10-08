@@ -13,9 +13,7 @@
 //! Provides a pluggable `TimeProvider` interface allowing deterministic mock testing of lease progression
 //! and expiration boundaries.
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use subtle::ConstantTimeEq;
 
@@ -30,55 +28,20 @@ pub const GRACE_PERIOD_SECS: u64 = 14 * 86_400;
 /// Maximum domain lease duration: 365 days in seconds: 365 * 24 * 3600 = 31,536,000 seconds.
 pub const MAX_LEASE_DURATION_SECS: u64 = 365 * 86_400;
 
-/// Pluggable time provider for deterministic time abstraction.
-pub trait TimeProvider: Send + Sync {
+pub use ark_time::{MockPmtClock, PmtClock, SystemPmtClock};
+
+/// Pluggable time provider for deterministic consensus time abstraction.
+pub trait TimeProvider: PmtClock {
     /// Return the current UNIX timestamp in seconds.
-    fn now_secs(&self) -> u64;
-}
-
-/// System clock implementation of `TimeProvider`.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct SystemTimeProvider;
-
-impl TimeProvider for SystemTimeProvider {
     fn now_secs(&self) -> u64 {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs()
+        self.now_pmt()
     }
 }
 
-/// Deterministic mock clock implementation of `TimeProvider` for testing.
-#[derive(Debug)]
-pub struct MockTimeProvider {
-    now: AtomicU64,
-}
+impl<T: PmtClock + ?Sized> TimeProvider for T {}
 
-impl MockTimeProvider {
-    /// Create a new MockTimeProvider initialized with `initial_secs`.
-    pub fn new(initial_secs: u64) -> Self {
-        Self {
-            now: AtomicU64::new(initial_secs),
-        }
-    }
-
-    /// Set current time to `new_secs`.
-    pub fn set_time(&self, new_secs: u64) {
-        self.now.store(new_secs, Ordering::SeqCst);
-    }
-
-    /// Advance current time by `delta_secs`.
-    pub fn advance(&self, delta_secs: u64) {
-        self.now.fetch_add(delta_secs, Ordering::SeqCst);
-    }
-}
-
-impl TimeProvider for MockTimeProvider {
-    fn now_secs(&self) -> u64 {
-        self.now.load(Ordering::SeqCst)
-    }
-}
+pub type SystemTimeProvider = SystemPmtClock;
+pub type MockTimeProvider = MockPmtClock;
 
 /// Lifecycle state of a sovereign `.ark` domain lease.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -110,31 +73,41 @@ impl DomainLeaseState {
 ///
 /// Coordinates domain registrations, renewals, resolution, and expired record eviction
 /// in accordance with GCP-08 and ADR-0010.
-#[derive(Clone, Debug)]
-pub struct LeaseLifecycleEngine<T: TimeProvider = SystemTimeProvider> {
+#[derive(Clone)]
+pub struct LeaseLifecycleEngine<T: TimeProvider = SystemPmtClock> {
     trie: Arc<SovereignDnsTrie>,
-    time_provider: Arc<T>,
+    clock: Arc<T>,
 }
 
-impl LeaseLifecycleEngine<SystemTimeProvider> {
-    /// Create a new LeaseLifecycleEngine with the default SystemTimeProvider.
+impl LeaseLifecycleEngine<SystemPmtClock> {
+    /// Create a new LeaseLifecycleEngine with the default SystemPmtClock.
     pub fn new(trie: Arc<SovereignDnsTrie>) -> Self {
         Self {
             trie,
-            time_provider: Arc::new(SystemTimeProvider),
+            clock: Arc::new(SystemPmtClock::default()),
         }
     }
 }
 
 impl<T: TimeProvider> LeaseLifecycleEngine<T> {
-    /// Create a new LeaseLifecycleEngine with a custom or mock `TimeProvider`.
-    pub fn with_time_provider(trie: Arc<SovereignDnsTrie>, time_provider: Arc<T>) -> Self {
-        Self { trie, time_provider }
+    /// Create a new LeaseLifecycleEngine with a custom or mock `PmtClock`.
+    pub fn with_clock(trie: Arc<SovereignDnsTrie>, clock: Arc<T>) -> Self {
+        Self { trie, clock }
     }
 
-    /// Returns a reference to the underlying time provider.
+    /// Backwards-compatible constructor accepting Arc<T>.
+    pub fn with_time_provider(trie: Arc<SovereignDnsTrie>, clock: Arc<T>) -> Self {
+        Self::with_clock(trie, clock)
+    }
+
+    /// Returns a reference to the underlying clock.
+    pub fn clock(&self) -> &T {
+        &self.clock
+    }
+
+    /// Backwards-compatible alias returning the underlying clock.
     pub fn time_provider(&self) -> &T {
-        &self.time_provider
+        &self.clock
     }
 
     /// Returns a reference to the underlying trie.
@@ -147,7 +120,7 @@ impl<T: TimeProvider> LeaseLifecycleEngine<T> {
     /// Returns `None` if the domain is not registered.
     pub fn state_of(&self, fqdn: &str) -> Option<DomainLeaseState> {
         let record = self.trie.get(fqdn)?;
-        let now = self.time_provider.now_secs();
+        let now = self.clock.now_pmt();
         Some(DomainLeaseState::compute(record.expires_at, now))
     }
 
@@ -162,7 +135,7 @@ impl<T: TimeProvider> LeaseLifecycleEngine<T> {
             None => return Ok(None),
         };
 
-        let now = self.time_provider.now_secs();
+        let now = self.clock.now_pmt();
         match DomainLeaseState::compute(record_arc.expires_at, now) {
             DomainLeaseState::Active => {
                 let mut record = (*record_arc).clone();
@@ -200,7 +173,7 @@ impl<T: TimeProvider> LeaseLifecycleEngine<T> {
         let canonical_fqdn = validate_fqdn(&record.fqdn)?;
         record.fqdn = canonical_fqdn;
 
-        let now = self.time_provider.now_secs();
+        let now = self.clock.now_pmt();
         Self::validate_lease_duration(now, record.expires_at)?;
 
         if let Some(existing) = self.trie.get(&record.fqdn) {
@@ -247,7 +220,7 @@ impl<T: TimeProvider> LeaseLifecycleEngine<T> {
         let canonical_fqdn = validate_fqdn(&record.fqdn)?;
         record.fqdn = canonical_fqdn;
 
-        let now = self.time_provider.now_secs();
+        let now = self.clock.now_pmt();
         Self::validate_lease_duration(now, record.expires_at)?;
 
         let existing = self
@@ -307,7 +280,7 @@ impl<T: TimeProvider> LeaseLifecycleEngine<T> {
             routing_addrs,
             expires_at: claim.lease_epoch,
             in_grace_period: false,
-            epoch_timestamp: self.time_provider.now_secs(),
+            epoch_timestamp: self.clock.now_pmt(),
             ech_public_key,
         }
     }
@@ -340,7 +313,7 @@ impl<T: TimeProvider> LeaseLifecycleEngine<T> {
     ///
     /// Returns the list of evicted routing records.
     pub fn evict_expired(&self) -> Vec<Arc<DomainRoutingRecord>> {
-        let now = self.time_provider.now_secs();
+        let now = self.clock.now_pmt();
         let all_records = self.trie.all_records();
         let mut evicted = Vec::new();
 

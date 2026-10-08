@@ -9,6 +9,7 @@ ark-core = { path = "../ark-core" }
 ark-crypto = { version = "0.1.0", path = "../ark-crypto" }
 ark-protocol = { version = "0.1.0", path = "../ark-protocol" }
 ark-storage = { version = "0.1.0", path = "../ark-storage" }
+ark-time = { version = "0.1.0", path = "../ark-time" }
 bech32 = "0.11"
 hex = "0.4"
 prost = "0.13"
