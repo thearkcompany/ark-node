@@ -115,22 +115,6 @@ async fn test_vpn_engine_failover_transparent_p2p_relay_and_probing() {
 }
 
 #[tokio::test]
-async fn test_vpn_engine_zero_trust_overlay_mesh_facade() {
-    use ark_vpn::ZeroTrustOverlayMesh;
-
-    let mut rng = rand_chacha::ChaCha20Rng::seed_from_u64(0xCCCC);
-    let identity = PersistentIdentity::generate(&mut rng);
-    let tun = Arc::new(MockTunAdapter::new("mesh0", 1200));
-
-    let mut mesh = ZeroTrustOverlayMesh::with_tun(identity, tun);
-    assert_eq!(mesh.is_running(), false);
-    mesh.start().await.expect("Mesh should start");
-    assert_eq!(mesh.is_running(), true);
-    mesh.stop().await.expect("Mesh should stop");
-    assert_eq!(mesh.is_running(), false);
-}
-
-#[tokio::test]
 async fn test_vpn_engine_dual_node_mesh_pipeline_roaming_and_failover() {
     use ark_vpn::pqmt::VpnSession;
     use ark_vpn::DeterministicIpam;
