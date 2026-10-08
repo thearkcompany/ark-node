@@ -57,6 +57,31 @@ impl NodeRuntimeBuilder {
         self
     }
 
+    pub fn enable_dns(mut self, enable: bool) -> Self {
+        self.config.enable_dns = enable;
+        self
+    }
+
+    pub fn enable_blob(mut self, enable: bool) -> Self {
+        self.config.enable_blob = enable;
+        self
+    }
+
+    pub fn enable_paas(mut self, enable: bool) -> Self {
+        self.config.enable_paas = enable;
+        self
+    }
+
+    pub fn enable_vpn(mut self, enable: bool) -> Self {
+        self.config.enable_vpn = enable;
+        self
+    }
+
+    pub fn enable_wot(mut self, enable: bool) -> Self {
+        self.config.enable_wot = enable;
+        self
+    }
+
     pub async fn spawn(self) -> Result<NodeHandle> {
         let bind_addr = self.config.bind_addr;
         let data_dir = self.config.data_dir.clone();
@@ -67,6 +92,89 @@ impl NodeRuntimeBuilder {
             data_dir.join("storage"),
             self.config.storage_config,
         )?);
+
+        let local_root = self.identity.as_ref().map(|id| id.ark_id).unwrap_or([0u8; 32]);
+
+        // Initialize DNS Engine if enabled
+        let dns_engine = if self.config.enable_dns {
+            #[derive(Clone)]
+            struct PermissiveDnsVerifier;
+            impl ark_dns::L2ContractVerifier for PermissiveDnsVerifier {
+                fn verify_escrow_contract(&self, _contract_id: &[u8], _owner_key_id: &[u8]) -> ark_dns::Result<bool> {
+                    Ok(true)
+                }
+            }
+
+            let overlay_store = Arc::new(ark_dns::PrivateOverlayStore::new(&storage)
+                .map_err(|e| ArkRuntimeError::Internal(format!("Dns init error: {:?}", e)))?);
+            let l2: Arc<dyn ark_dns::L2ContractVerifier> = Arc::new(PermissiveDnsVerifier);
+            let dns = ark_dns::SovereignDnsEngine::builder()
+                .overlay_store(overlay_store)
+                .trie(Arc::new(ark_dns::SovereignDnsTrie::new()))
+                .time_provider(Arc::new(ark_dns::SystemTimeProvider))
+                .l2_verifier(Arc::new(l2))
+                .default_caller_ark_id(local_root)
+                .build()
+                .map_err(|e| ArkRuntimeError::Internal(format!("Dns builder error: {:?}", e)))?;
+            Some(Arc::new(dns))
+        } else {
+            None
+        };
+
+        // Initialize Blob Engine if enabled
+        let blob_engine = if self.config.enable_blob {
+            let hybrid_store = ark_blob::HybridBlobStore::new(data_dir.join("blobs"), storage.clone())
+                .map_err(|e| ArkRuntimeError::Internal(format!("Blob store error: {:?}", e)))?;
+            let blob = ark_blob::BlobEngine::new(
+                hybrid_store,
+                Arc::new(ark_blob::PermissiveBlobEscrowVerifier) as Arc<dyn ark_blob::BlobEscrowVerifier>,
+            );
+            Some(Arc::new(blob))
+        } else {
+            None
+        };
+
+        // Initialize PaaS Engine if enabled
+        let paas_engine = if self.config.enable_paas {
+            let queue = Arc::new(ark_paas::ArkQueue::open(
+                storage.clone(),
+                ark_paas::QueueConfig::default(),
+            ).map_err(|e| ArkRuntimeError::Internal(format!("Paas queue error: {:?}", e)))?);
+            let clock = Arc::new(ark_paas::InMemoryPmtClock::new(1_700_000_000));
+            let kv_backend = Arc::new(ark_paas::InMemoryKvStore::new());
+            let blob_backend = Arc::new(ark_paas::InMemoryBlobReader::new());
+            let envelope_backend = Arc::new(ark_paas::InMemoryEnvelopeEmitter::new());
+            let paas = ark_paas::PaasEngine::new(
+                queue,
+                clock,
+                kv_backend,
+                blob_backend,
+                envelope_backend,
+            );
+            Some(Arc::new(paas))
+        } else {
+            None
+        };
+
+        // Initialize VPN Engine if enabled and identity exists
+        let vpn_engine = if self.config.enable_vpn && self.identity.is_some() {
+            let mut rng = rand::rngs::OsRng;
+            let vpn_id = PersistentIdentity::generate(&mut rng);
+            let tun = Arc::new(ark_vpn::MockTunAdapter::new("ark0", 1280));
+            let vpn = ark_vpn::VpnEngine::new(vpn_id, tun, ark_vpn::VpnEngineConfig::default());
+            Some(Arc::new(vpn))
+        } else {
+            None
+        };
+
+        // Initialize WoT Engine if enabled
+        let wot_engine = if self.config.enable_wot {
+            let wot = ark_wot::WotEngine::open(local_root, storage.clone())
+                .map_err(|e| ArkRuntimeError::Internal(format!("Wot error: {:?}", e)))?;
+            Some(Arc::new(wot))
+        } else {
+            None
+        };
 
         // QUIC server endpoint initialization
         let server_endpoint = ArkQuicEndpoint::new_server_self_signed(bind_addr)
@@ -80,7 +188,14 @@ impl NodeRuntimeBuilder {
         let join_set = Arc::new(tokio::sync::Mutex::new(JoinSet::new()));
         let status = Arc::new(AtomicU8::new(NodeRuntimeStatus::Running as u8));
 
-        let dispatcher = Arc::new(crate::dispatcher::EnvelopeDispatcher::new(storage.clone())?);
+        let dispatcher = Arc::new(crate::dispatcher::EnvelopeDispatcher::new(
+            storage.clone(),
+            dns_engine,
+            blob_engine,
+            paas_engine,
+            vpn_engine,
+            wot_engine,
+        )?);
 
         let endpoint_arc = Arc::new(server_endpoint);
         let accept_endpoint = endpoint_arc.clone();

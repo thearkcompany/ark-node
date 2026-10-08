@@ -24,6 +24,11 @@ pub struct NodeRuntimeConfig {
     pub data_dir: PathBuf,
     pub role: Role,
     pub storage_config: StorageConfig,
+    pub enable_dns: bool,
+    pub enable_blob: bool,
+    pub enable_paas: bool,
+    pub enable_vpn: bool,
+    pub enable_wot: bool,
 }
 
 impl Default for NodeRuntimeConfig {
@@ -33,6 +38,11 @@ impl Default for NodeRuntimeConfig {
             data_dir: PathBuf::from("./ark-data"),
             role: Role::Server,
             storage_config: StorageConfig::default(),
+            enable_dns: true,
+            enable_blob: true,
+            enable_paas: true,
+            enable_vpn: true,
+            enable_wot: true,
         }
     }
 }
