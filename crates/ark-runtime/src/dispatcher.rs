@@ -99,7 +99,7 @@ impl EnvelopeDispatcher {
     /// Primary wire processing entrypoint: inspects raw wire frame and dispatches
     pub fn process_wire_frame(&self, wire_bytes: &[u8]) -> Result<DispatchOutcome> {
         let (header, envelope) = WireFrame::decode(wire_bytes)
-            .map_err(|e| ArkRuntimeError::Core(e))?;
+            .map_err(ArkRuntimeError::Core)?;
 
         self.dispatch_envelope(&header, &envelope)
     }
