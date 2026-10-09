@@ -138,10 +138,9 @@ impl EnvelopeDispatcher {
         // 2. Sovereign DNS Engine routing
         if kind == KIND_DNS_CLAIM_PUBLIC || fast_tag == KIND_DNS_CLAIM_PUBLIC {
             if let Some(ref dns) = self.dns_engine {
-                let fqdn_str = std::str::from_utf8(&envelope.payload).unwrap_or("");
-                let _ = dns.resolve(fqdn_str, None);
+                dns.register_public_domain(envelope)?;
             }
-            let _ = self.storage.put_envelope(envelope);
+            let _ = self.storage.put_envelope(envelope)?;
             return Ok(DispatchOutcome::DnsHandled);
         }
 

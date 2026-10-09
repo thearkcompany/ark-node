@@ -8,6 +8,9 @@ pub enum ArkRuntimeError {
     #[error("Storage error: {0}")]
     Storage(#[from] ark_storage::ArkStorageError),
 
+    #[error("DNS error: {0}")]
+    Dns(#[from] ark_dns::error::DnsError),
+
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 

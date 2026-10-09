@@ -153,7 +153,7 @@ pub fn validate_dns_claim<V: L2ContractVerifier + ?Sized>(
     l2_verifier: &V,
 ) -> Result<ValidatedDnsClaim> {
     // 1. Validate envelope wire format and header
-    if envelope.magic != b"ARK1" {
+    if envelope.magic != ark_core::constants::MAGIC_BYTES && envelope.magic != b"ARK1" {
         return Err(DnsError::InvalidRecord("Invalid envelope magic bytes".to_string()));
     }
 

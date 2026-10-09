@@ -36,17 +36,40 @@ async fn test_subsystem_dispatch_routing_and_fault_isolation() {
     let conn = connecting.await.expect("Client handshake failed");
 
     // 1. Send DNS claim envelope (KIND_DNS_CLAIM_PUBLIC = 0x3000_0002)
-    let fast_header_dns = FastHeader::new(0, 100, 0x3000_0002, [1u8; 16], [2u8; 16], 1);
-    let env_dns = ArkEnvelope::new(
-        fast_header_dns.to_bytes(),
-        [1u8; 32],
-        [2u8; 32],
-        b"sovereign.ark".to_vec(),
-        vec![0u8; 64],
-        0,
-        vec![BinaryTag::new(0, 0x3000_0002u32.to_be_bytes().to_vec())],
-        1_700_000_000,
-    ).unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let fast_header_dns = FastHeader::new(0, 128, 0x3000_0002, [1u8; 16], [2u8; 16], 1);
+    let mut env_dns = ArkEnvelope {
+        magic: ark_core::constants::MAGIC_BYTES.to_vec(),
+        fast_header: fast_header_dns.to_bytes().to_vec(),
+        sender_id: vec![1u8; 16],
+        recipient_id: vec![0u8; 32],
+        payload: b"127.0.0.1:8080".to_vec(),
+        signature: vec![1u8; 64],
+        core_tag_mask: 0,
+        tags: vec![
+            BinaryTag::new(0, 0x3000_0002u32.to_be_bytes().to_vec()),
+            BinaryTag::new(ark_dns::anti_sybil::TAG_PARAM_D, b"sovereign.ark".to_vec()),
+            BinaryTag::new(ark_dns::anti_sybil::TAG_DNS_LEASE_EPOCH, (now + 30 * 86_400).to_be_bytes().to_vec()),
+            BinaryTag::new(ark_dns::anti_sybil::TAG_L2_CONTRACT, b"mock-contract".to_vec()),
+            BinaryTag::new(ark_dns::anti_sybil::TAG_NONCE, 0u64.to_be_bytes().to_vec()),
+        ],
+        timestamp: now,
+    };
+    for nonce in 0u64..1_000_000 {
+        for tag in &mut env_dns.tags {
+            if tag.tag_type == ark_dns::anti_sybil::TAG_NONCE {
+                tag.tag_value = nonce.to_be_bytes().to_vec();
+                break;
+            }
+        }
+        let id = ark_storage::compute_envelope_id(&env_dns).unwrap();
+        if id[0] == 0 && id[1] == 0 {
+            break;
+        }
+    }
     let wire_dns = WireFrame::encode(&fast_header_dns, &env_dns).unwrap();
 
     let (mut send, mut recv) = conn.open_bi().await.unwrap();
