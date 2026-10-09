@@ -5,6 +5,7 @@ use dashmap::DashMap;
 use parking_lot::RwLock;
 use ark_core::error::{ArkError, Result};
 use ark_crdt::{MstConfig, MstEngine};
+use ark_protocol::envelope::ArkEnvelope;
 use ark_storage::{Keyspace, StorageEngine};
 use crate::crypto::{TrustAttestation, TrustRevocation};
 use crate::engine::CRDT_NAMESPACE_WOT;
@@ -236,4 +237,90 @@ impl WotStore {
         }
         list
     }
+
+    /// Ingest an inbound anti-entropy CRDT envelope (ADR-0020).
+    ///
+    /// Cryptographically validates `TAG_WOT_PUBKEY`, checks `issuer_id == SHA3-256(pubkey)`,
+    /// verifies the FN-DSA-512 signature against the payload, enforces PMT consensus drift boundaries (±30s),
+    /// records the data in the respective Fjall LSM keyspace, indexes into the MST under `CRDT_NAMESPACE_WOT`,
+    /// and immediately updates the in-memory trust graph (PPR) and evaluation cache.
+    pub fn ingest_crdt_envelope(&self, envelope: &ArkEnvelope, reference_pmt: u64) -> Result<()> {
+        use ark_crypto::fn_dsa::FN_DSA_512_PUBKEY_SIZE;
+        use sha3::{Digest, Sha3_256};
+
+        let kind = ark_storage::get_envelope_kind(envelope);
+
+        // 1. Extract TAG_WOT_PUBKEY
+        let pubkey_tag = envelope
+            .tags
+            .iter()
+            .find(|tag| tag.tag_type == crate::crypto::TAG_WOT_PUBKEY)
+            .ok_or_else(|| {
+                ArkError::TagError("Envelope missing required TAG_WOT_PUBKEY tag".to_string())
+            })?;
+
+        let issuer_pubkey = &pubkey_tag.tag_value;
+        if issuer_pubkey.len() != FN_DSA_512_PUBKEY_SIZE {
+            return Err(ArkError::CryptoError(format!(
+                "Invalid issuer public key size: {} bytes, expected {} bytes",
+                issuer_pubkey.len(),
+                FN_DSA_512_PUBKEY_SIZE
+            )));
+        }
+
+        // 2. Validate issuer identity derivation: issuer_id == SHA3-256(pubkey)
+        let derived_issuer_id: [u8; 32] = Sha3_256::digest(issuer_pubkey).into();
+        if envelope.sender_id.as_slice() != derived_issuer_id.as_slice() {
+            return Err(ArkError::CryptoError(
+                "Public key does not derive envelope sender_id".to_string(),
+            ));
+        }
+
+        // 3. Dispatch based on envelope kind
+        match kind {
+            crate::crypto::KIND_WOT_ATTESTATION => {
+                let attestation = TrustAttestation::from_envelope(envelope)?;
+                if attestation.issuer_id != derived_issuer_id {
+                    return Err(ArkError::CryptoError(
+                        "Public key does not match attestation issuer_id".to_string(),
+                    ));
+                }
+
+                // Consensus drift validation (±30s)
+                ark_time::DriftValidator::validate_timestamp(attestation.issued_at_pmt, reference_pmt)?;
+
+                // Cryptographic signature and bound verification
+                attestation.verify_signature(issuer_pubkey)?;
+
+                // Save to LSM, storage, MST, trust graph, and refresh cache
+                self.save_attestation(&attestation, issuer_pubkey)?;
+                Ok(())
+            }
+            crate::crypto::KIND_WOT_REVOCATION => {
+                let revocation = TrustRevocation::from_envelope(envelope)?;
+                if revocation.issuer_id != derived_issuer_id {
+                    return Err(ArkError::CryptoError(
+                        "Public key does not match revocation issuer_id".to_string(),
+                    ));
+                }
+
+                // Consensus drift validation (±30s)
+                ark_time::DriftValidator::validate_timestamp(revocation.revoked_at_pmt, reference_pmt)?;
+
+                // Cryptographic signature verification
+                revocation.verify_signature(issuer_pubkey)?;
+
+                // Save to LSM, storage, MST, trust graph, and refresh cache
+                self.save_revocation(&revocation, issuer_pubkey)?;
+                Ok(())
+            }
+            other => Err(ArkError::SerializationError(format!(
+                "Unsupported WoT envelope kind: 0x{:04x}, expected 0x{:04x} (attestation) or 0x{:04x} (revocation)",
+                other,
+                crate::crypto::KIND_WOT_ATTESTATION,
+                crate::crypto::KIND_WOT_REVOCATION,
+            ))),
+        }
+    }
 }
+
