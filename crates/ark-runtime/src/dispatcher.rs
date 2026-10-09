@@ -223,8 +223,9 @@ impl EnvelopeDispatcher {
             || fast_tag == KIND_WOT_ATTESTATION
             || fast_tag == KIND_WOT_REVOCATION
         {
-            if let Some(ref _wot) = self.wot_engine {
-                // Handled via storage & MST sync
+            if let Some(ref wot) = self.wot_engine {
+                wot.ingest_envelope(envelope)
+                    .map_err(|e| ArkRuntimeError::Wot(e.to_string()))?;
             }
             let _outcome = self.storage.put_envelope(envelope)?;
             return Ok(DispatchOutcome::WotHandled);

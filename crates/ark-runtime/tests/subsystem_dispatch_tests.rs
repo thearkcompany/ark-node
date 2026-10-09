@@ -80,17 +80,23 @@ async fn test_subsystem_dispatch_routing_and_fault_isolation() {
     assert_eq!(ack[0], 1, "DNS dispatch should return ACK 1");
 
     // 2. Send WoT attestation envelope (KIND_WOT_ATTESTATION = 0x000A)
-    let fast_header_wot = FastHeader::new(0, 100, 0x000A, [1u8; 16], [2u8; 16], 2);
-    let env_wot = ArkEnvelope::new(
-        fast_header_wot.to_bytes(),
-        [1u8; 32],
-        [2u8; 32],
-        b"wot-attestation-payload".to_vec(),
-        vec![0u8; 64],
-        0,
-        vec![BinaryTag::new(0, 0x000Au32.to_be_bytes().to_vec())],
+    let wot_issuer_key = ark_crypto::fn_dsa::FnDsaKeyPair::generate(&mut rng);
+    let wot_issuer_id = ark_crypto::identity::Identity::from_public_key(&wot_issuer_key.public_key).ark_id;
+    let wot_subject_id = [2u8; 32];
+    let mut wot_scopes = ark_wot::crypto::CapabilityScopes::empty();
+    wot_scopes.insert(ark_wot::crypto::CapabilityScope::RELAY);
+    let att = ark_wot::crypto::TrustAttestation::create_and_sign(
+        wot_issuer_id,
+        wot_subject_id,
+        0.8,
+        wot_scopes,
         1_700_000_000,
+        1_700_000_000 + 30 * 86400,
+        2,
+        &wot_issuer_key,
     ).unwrap();
+    let env_wot = att.to_envelope(&wot_issuer_key.public_key).unwrap();
+    let fast_header_wot = FastHeader::from_bytes(&env_wot.fast_header[..64].try_into().unwrap()).unwrap();
     let wire_wot = WireFrame::encode(&fast_header_wot, &env_wot).unwrap();
 
     let (mut send, mut recv) = conn.open_bi().await.unwrap();
