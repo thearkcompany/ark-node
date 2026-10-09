@@ -6,6 +6,7 @@ pub mod ipam;
 pub mod pqmt;
 pub mod relay;
 pub mod roaming;
+pub mod transport;
 pub mod tun;
 
 pub use acl::{
@@ -27,6 +28,7 @@ pub use relay::{
     RelayStats,
 };
 pub use roaming::{PeerSessionEntry, RoamingTable, DEFAULT_SESSION_IDLE_TIMEOUT};
+pub use transport::{ChannelTransportSink, VpnTransportSink};
 pub use tun::{
     MockTunAdapter, NativeTunAdapter, PacketDirection, VirtualTunAdapter, DEFAULT_SAFE_MTU,
     TCP_MSS_FLOOR,
