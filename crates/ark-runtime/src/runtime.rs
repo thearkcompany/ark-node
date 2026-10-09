@@ -114,8 +114,8 @@ impl NodeRuntimeBuilder {
             let dns = ark_dns::SovereignDnsEngine::builder()
                 .overlay_store(overlay_store)
                 .trie(Arc::new(ark_dns::SovereignDnsTrie::new()))
-                .time_provider(dns_clock)
-                .l2_verifier(Arc::new(l2))
+                .clock(dns_clock)
+                .l2_verifier(l2)
                 .default_caller_ark_id(local_root)
                 .build()
                 .map_err(|e| ArkRuntimeError::Internal(format!("Dns builder error: {:?}", e)))?;

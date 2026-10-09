@@ -119,33 +119,7 @@ impl EnvelopeEmitterBackend for InMemoryEnvelopeEmitter {
     }
 }
 
-/// In-memory mock implementation of `PmtClock`.
-#[derive(Clone)]
-pub struct InMemoryPmtClock {
-    time: Arc<Mutex<u64>>,
-}
+/// In-memory mock implementation of `PmtClock` aliasing `ark_time::MockPmtClock`.
+pub type InMemoryPmtClock = ark_time::MockPmtClock;
 
-impl InMemoryPmtClock {
-    pub fn new(initial_time: u64) -> Self {
-        Self {
-            time: Arc::new(Mutex::new(initial_time)),
-        }
-    }
-
-    pub fn set_time(&self, new_time: u64) {
-        *self.time.lock().unwrap() = new_time;
-    }
-}
-
-impl Default for InMemoryPmtClock {
-    fn default() -> Self {
-        Self::new(1700000000)
-    }
-}
-
-impl ark_time::PmtClock for InMemoryPmtClock {
-    fn now_pmt(&self) -> u64 {
-        *self.time.lock().unwrap()
-    }
-}
 

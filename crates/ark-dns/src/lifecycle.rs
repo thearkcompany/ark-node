@@ -30,18 +30,10 @@ pub const MAX_LEASE_DURATION_SECS: u64 = 365 * 86_400;
 
 pub use ark_time::{MockPmtClock, PmtClock, SystemPmtClock};
 
-/// Pluggable time provider for deterministic consensus time abstraction.
-pub trait TimeProvider: PmtClock {
-    /// Return the current UNIX timestamp in seconds.
-    fn now_secs(&self) -> u64 {
-        self.now_pmt()
-    }
-}
-
-impl<T: PmtClock + ?Sized> TimeProvider for T {}
-
+// Backwards-compatible aliases during transition if needed
 pub type SystemTimeProvider = SystemPmtClock;
 pub type MockTimeProvider = MockPmtClock;
+
 
 /// Lifecycle state of a sovereign `.ark` domain lease.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -74,12 +66,12 @@ impl DomainLeaseState {
 /// Coordinates domain registrations, renewals, resolution, and expired record eviction
 /// in accordance with GCP-08 and ADR-0010.
 #[derive(Clone)]
-pub struct LeaseLifecycleEngine<T: TimeProvider = SystemPmtClock> {
+pub struct LeaseLifecycleEngine {
     trie: Arc<SovereignDnsTrie>,
-    clock: Arc<T>,
+    clock: Arc<dyn PmtClock>,
 }
 
-impl LeaseLifecycleEngine<SystemPmtClock> {
+impl LeaseLifecycleEngine {
     /// Create a new LeaseLifecycleEngine with the default SystemPmtClock.
     pub fn new(trie: Arc<SovereignDnsTrie>) -> Self {
         Self {
@@ -87,26 +79,24 @@ impl LeaseLifecycleEngine<SystemPmtClock> {
             clock: Arc::new(SystemPmtClock::default()),
         }
     }
-}
 
-impl<T: TimeProvider> LeaseLifecycleEngine<T> {
     /// Create a new LeaseLifecycleEngine with a custom or mock `PmtClock`.
-    pub fn with_clock(trie: Arc<SovereignDnsTrie>, clock: Arc<T>) -> Self {
+    pub fn with_clock(trie: Arc<SovereignDnsTrie>, clock: Arc<dyn PmtClock>) -> Self {
         Self { trie, clock }
     }
 
-    /// Backwards-compatible constructor accepting Arc<T>.
-    pub fn with_time_provider(trie: Arc<SovereignDnsTrie>, clock: Arc<T>) -> Self {
+    /// Backwards-compatible constructor accepting clock trait object.
+    pub fn with_time_provider(trie: Arc<SovereignDnsTrie>, clock: Arc<dyn PmtClock>) -> Self {
         Self::with_clock(trie, clock)
     }
 
     /// Returns a reference to the underlying clock.
-    pub fn clock(&self) -> &T {
+    pub fn clock(&self) -> &Arc<dyn PmtClock> {
         &self.clock
     }
 
     /// Backwards-compatible alias returning the underlying clock.
-    pub fn time_provider(&self) -> &T {
+    pub fn time_provider(&self) -> &Arc<dyn PmtClock> {
         &self.clock
     }
 
