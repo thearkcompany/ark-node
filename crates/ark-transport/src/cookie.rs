@@ -26,7 +26,8 @@ impl RetryCookieManager {
         let addr_str = client_addr.to_string();
         token_data.extend_from_slice(addr_str.as_bytes());
 
-        let tag = Kmac256::generate_cookie_tag(&self.secret_key, addr_str.as_bytes(), &now.to_be_bytes());
+        let tag =
+            Kmac256::generate_cookie_tag(&self.secret_key, addr_str.as_bytes(), &now.to_be_bytes());
 
         let mut out = Vec::with_capacity(8 + 32);
         out.extend_from_slice(&now.to_be_bytes());
@@ -35,7 +36,12 @@ impl RetryCookieManager {
     }
 
     /// Validate the incoming stateless retry cookie
-    pub fn validate_cookie(&self, client_addr: SocketAddr, cookie: &[u8], max_age_secs: u64) -> Result<()> {
+    pub fn validate_cookie(
+        &self,
+        client_addr: SocketAddr,
+        cookie: &[u8],
+        max_age_secs: u64,
+    ) -> Result<()> {
         if cookie.len() != 40 {
             return Err(ArkError::InvalidRetryCookie);
         }
@@ -54,7 +60,8 @@ impl RetryCookieManager {
         }
 
         let addr_str = client_addr.to_string();
-        let expected_tag = Kmac256::generate_cookie_tag(&self.secret_key, addr_str.as_bytes(), &ts_bytes);
+        let expected_tag =
+            Kmac256::generate_cookie_tag(&self.secret_key, addr_str.as_bytes(), &ts_bytes);
 
         if cookie[8..40] != expected_tag {
             return Err(ArkError::InvalidRetryCookie);

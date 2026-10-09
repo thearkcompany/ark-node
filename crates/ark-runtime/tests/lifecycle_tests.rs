@@ -1,7 +1,6 @@
-
 use ark_crypto::PersistentIdentity;
-use ark_transport::ArkQuicEndpoint;
 use ark_runtime::{NodeRuntimeBuilder, NodeRuntimeStatus, Role};
+use ark_transport::ArkQuicEndpoint;
 use rand::rngs::OsRng;
 use tempfile::tempdir;
 
@@ -35,7 +34,9 @@ async fn test_runtime_spawn_connect_and_graceful_shutdown() {
 
     let conn = connecting.await.expect("Client handshake failed");
     let (mut send, _recv) = conn.open_bi().await.expect("Failed to open stream");
-    send.write_all(b"ping").await.expect("Failed to write to stream");
+    send.write_all(b"ping")
+        .await
+        .expect("Failed to write to stream");
     send.finish().expect("Failed to finish stream");
 
     // Close client connection cleanly

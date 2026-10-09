@@ -9,13 +9,13 @@
 //!   and `Trigger::ManualInvocation`.
 //! - Protobuf schema definitions for manifests, configurations, telemetry, and status receipts.
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-use std::time::Instant;
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use prost::Message;
 use sha3::{Digest, Sha3_256};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::Instant;
 
 use ark_protocol::envelope::ArkEnvelope;
 
@@ -24,15 +24,11 @@ use crate::error::{PaasError, Result};
 use crate::host_abi::HostAbiState;
 use crate::lease::JobLease;
 use crate::proto::{
-    ExecutionStatus, ExecutionTelemetry, TriggerPayload, TriggerType,
-    WorkerManifest,
+    ExecutionStatus, ExecutionTelemetry, TriggerPayload, TriggerType, WorkerManifest,
 };
 use crate::queue::{ArkQueue, Task};
-use crate::traits::{
-    BlobReaderBackend, EnvelopeEmitterBackend, InMemoryPmtClock, KvStoreBackend,
-};
+use crate::traits::{BlobReaderBackend, EnvelopeEmitterBackend, InMemoryPmtClock, KvStoreBackend};
 use crate::worker::{WasmWorker, WasmWorkerConfig};
-
 
 /// Trigger event representing an execution stimulus in ark-paas.
 #[derive(Debug, Clone)]
@@ -134,14 +130,12 @@ impl<C: PmtClock + 'static> PaasEngine<C> {
     }
 
     /// Register a guest WebAssembly worker module bytecode and manifest.
-    pub fn register_worker(
-        &self,
-        wasm_bytes: &[u8],
-        mut manifest: WorkerManifest,
-    ) -> Result<()> {
+    pub fn register_worker(&self, wasm_bytes: &[u8], mut manifest: WorkerManifest) -> Result<()> {
         let worker_id = manifest.worker_id.clone();
         if worker_id.is_empty() {
-            return Err(PaasError::InvalidArgument("Worker ID cannot be empty".to_string()));
+            return Err(PaasError::InvalidArgument(
+                "Worker ID cannot be empty".to_string(),
+            ));
         }
 
         // Calculate and set SHA3-256 hash if empty or verify
@@ -239,7 +233,10 @@ impl<C: PmtClock + 'static> PaasEngine<C> {
     /// Returns Ok(Some(telemetry)) if a task was dispatched and run,
     /// Ok(None) if the queue was empty.
     pub fn poll_and_execute_next(&self) -> Result<Option<ExecutionTelemetry>> {
-        let lease_opt = self.queue.dispatch().map_err(|e| PaasError::QueueError(e.to_string()))?;
+        let lease_opt = self
+            .queue
+            .dispatch()
+            .map_err(|e| PaasError::QueueError(e.to_string()))?;
         let lease = match lease_opt {
             Some(l) => l,
             None => return Ok(None),
@@ -315,25 +312,32 @@ impl<C: PmtClock + 'static> PaasEngine<C> {
         let abi_state = self.build_abi_state(initial_io);
 
         // Execute worker
-        let exec_result: Result<(i32, u64, u64, u32)> = worker.execute_with_state(
-            Some(abi_state),
-            |store, instance| {
+        let exec_result: Result<(i32, u64, u64, u32)> =
+            worker.execute_with_state(Some(abi_state), |store, instance| {
                 // Check if entrypoint takes (ptr, len) or is simple nullary
-                let return_code = if let Ok(func) = instance.get_typed_func::<(u32, u32), i32>(&mut *store, &entrypoint) {
+                let return_code = if let Ok(func) =
+                    instance.get_typed_func::<(u32, u32), i32>(&mut *store, &entrypoint)
+                {
                     // Entrypoint accepts payload pointer and len
                     let payload = &trigger_payload.payload;
                     let payload_len = payload.len() as u32;
 
                     // Allocate memory in guest if ark_alloc is available
-                    let ptr = if let Ok(alloc_fn) = instance.get_typed_func::<u32, u32>(&mut *store, "ark_alloc") {
+                    let ptr = if let Ok(alloc_fn) =
+                        instance.get_typed_func::<u32, u32>(&mut *store, "ark_alloc")
+                    {
                         let p = alloc_fn.call(&mut *store, payload_len)?;
-                        if let Some(wasmtime::Extern::Memory(mem)) = instance.get_export(&mut *store, "memory") {
+                        if let Some(wasmtime::Extern::Memory(mem)) =
+                            instance.get_export(&mut *store, "memory")
+                        {
                             mem.write(&mut *store, p as usize, payload)?;
                         }
                         p
                     } else {
                         // Offset 0 fallback if memory exists and fits
-                        if let Some(wasmtime::Extern::Memory(mem)) = instance.get_export(&mut *store, "memory") {
+                        if let Some(wasmtime::Extern::Memory(mem)) =
+                            instance.get_export(&mut *store, "memory")
+                        {
                             let data = mem.data_mut(&mut *store);
                             if (payload_len as usize) <= data.len() {
                                 data[..payload_len as usize].copy_from_slice(payload);
@@ -344,14 +348,19 @@ impl<C: PmtClock + 'static> PaasEngine<C> {
 
                     let res = func.call(&mut *store, (ptr, payload_len));
                     if ptr != 0 {
-                        if let Ok(dealloc_fn) = instance.get_typed_func::<(u32, u32), ()>(&mut *store, "ark_dealloc") {
+                        if let Ok(dealloc_fn) =
+                            instance.get_typed_func::<(u32, u32), ()>(&mut *store, "ark_dealloc")
+                        {
                             let _ = dealloc_fn.call(&mut *store, (ptr, payload_len));
                         }
                     }
                     res?
-                } else if let Ok(func) = instance.get_typed_func::<(), i32>(&mut *store, &entrypoint) {
+                } else if let Ok(func) =
+                    instance.get_typed_func::<(), i32>(&mut *store, &entrypoint)
+                {
                     func.call(&mut *store, ())?
-                } else if let Ok(func) = instance.get_typed_func::<(), ()>(&mut *store, &entrypoint) {
+                } else if let Ok(func) = instance.get_typed_func::<(), ()>(&mut *store, &entrypoint)
+                {
                     func.call(&mut *store, ())?;
                     0
                 } else {
@@ -366,8 +375,7 @@ impl<C: PmtClock + 'static> PaasEngine<C> {
                 let log_count = store.data().abi_state.logs.len() as u32;
 
                 Ok((return_code, remaining_cpu, remaining_io, log_count))
-            },
-        );
+            });
 
         let duration_micros = start_time.elapsed().as_micros() as u64;
 
@@ -418,6 +426,7 @@ impl<C: PmtClock + 'static> PaasEngine<C> {
     }
 
     /// Handle execution failure: manage attempts, dead-letter routing, and return telemetry.
+    #[allow(clippy::too_many_arguments)]
     fn handle_execution_failure(
         &self,
         lease: &JobLease,
@@ -445,7 +454,6 @@ impl<C: PmtClock + 'static> PaasEngine<C> {
             error_message: err_msg,
             log_count: 0,
         };
-
 
         // Note: The lease is not acked; when lease expires, process_expired_leases()
         // will either re-enqueue for retry or route to DLQ when max_attempts is reached.
@@ -476,7 +484,9 @@ impl<C: PmtClock + 'static> TriggerSource for PaasEngine<C> {
             }
             Trigger::EnvelopeReceived(envelope_payload) => {
                 let env = envelope_payload.envelope;
-                let env_bytes = env.encode_to_vec().map_err(|e| PaasError::Protobuf(e.to_string()))?;
+                let env_bytes = env
+                    .encode_to_vec()
+                    .map_err(|e| PaasError::Protobuf(e.to_string()))?;
 
                 // Determine target workers:
                 // 1. If explicit target_worker_id provided, dispatch to it.
@@ -517,9 +527,9 @@ impl<C: PmtClock + 'static> TriggerSource for PaasEngine<C> {
                 Ok(task_ids)
             }
             Trigger::ManualInvocation(manual_payload) => {
-                let invocation_id = manual_payload
-                    .invocation_id
-                    .unwrap_or_else(|| format!("manual-{}-{}", manual_payload.target_worker_id, seq));
+                let invocation_id = manual_payload.invocation_id.unwrap_or_else(|| {
+                    format!("manual-{}-{}", manual_payload.target_worker_id, seq)
+                });
 
                 let proto_payload = TriggerPayload {
                     trigger_type: TriggerType::Manual as i32,

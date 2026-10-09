@@ -1,5 +1,5 @@
+use ark_time::{MockPmtClock, PeerMedianTime, PmtClock, SystemPmtClock};
 use std::sync::Arc;
-use ark_time::{MockPmtClock, PmtClock, SystemPmtClock, PeerMedianTime};
 
 #[test]
 fn test_mock_pmt_clock_operations() {

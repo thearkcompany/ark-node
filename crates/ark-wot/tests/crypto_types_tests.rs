@@ -1,9 +1,9 @@
 use ark_crypto::fn_dsa::FnDsaKeyPair;
-use ark_wot::crypto::{
-    CapabilityScope, CapabilityScopes, TrustAttestation, TrustRevocation,
-    KIND_WOT_ATTESTATION, KIND_WOT_REVOCATION,
-};
 use ark_crypto::identity::Identity;
+use ark_wot::crypto::{
+    CapabilityScope, CapabilityScopes, TrustAttestation, TrustRevocation, KIND_WOT_ATTESTATION,
+    KIND_WOT_REVOCATION,
+};
 use rand::rngs::OsRng;
 
 #[test]
@@ -40,18 +40,23 @@ fn test_attestation_and_revocation_signing_roundtrip() {
     assert!(tampered.verify_signature(&issuer_key.public_key).is_err());
 
     // Wrong public key
-    assert!(attestation.verify_signature(&subject_key.public_key).is_err());
+    assert!(attestation
+        .verify_signature(&subject_key.public_key)
+        .is_err());
 
     // Envelope packaging
-    let envelope = attestation.to_envelope(&issuer_key.public_key)
+    let envelope = attestation
+        .to_envelope(&issuer_key.public_key)
         .expect("to_envelope failed");
-    assert_eq!(ark_storage::get_envelope_kind(&envelope), KIND_WOT_ATTESTATION);
+    assert_eq!(
+        ark_storage::get_envelope_kind(&envelope),
+        KIND_WOT_ATTESTATION
+    );
     assert_eq!(envelope.sender_id, issuer_id);
     assert_eq!(envelope.recipient_id, subject_id);
 
     // Decode from envelope
-    let decoded = TrustAttestation::from_envelope(&envelope)
-        .expect("from_envelope failed");
+    let decoded = TrustAttestation::from_envelope(&envelope).expect("from_envelope failed");
     assert_eq!(decoded.issuer_id, issuer_id);
     assert_eq!(decoded.subject_id, subject_id);
     assert_eq!(decoded.score_weight, 0.85);
@@ -70,12 +75,15 @@ fn test_attestation_and_revocation_signing_roundtrip() {
 
     assert!(revocation.verify_signature(&issuer_key.public_key).is_ok());
 
-    let rev_envelope = revocation.to_envelope(&issuer_key.public_key)
+    let rev_envelope = revocation
+        .to_envelope(&issuer_key.public_key)
         .expect("to_envelope failed");
-    assert_eq!(ark_storage::get_envelope_kind(&rev_envelope), KIND_WOT_REVOCATION);
+    assert_eq!(
+        ark_storage::get_envelope_kind(&rev_envelope),
+        KIND_WOT_REVOCATION
+    );
 
-    let decoded_rev = TrustRevocation::from_envelope(&rev_envelope)
-        .expect("from_envelope failed");
+    let decoded_rev = TrustRevocation::from_envelope(&rev_envelope).expect("from_envelope failed");
     assert_eq!(decoded_rev.issuer_id, issuer_id);
     assert_eq!(decoded_rev.subject_id, subject_id);
     assert_eq!(decoded_rev.reason, "compromised_key");
@@ -98,7 +106,8 @@ fn test_rejection_of_corrupted_signature_and_invalid_score() {
         200,
         1,
         &issuer_key
-    ).is_err());
+    )
+    .is_err());
 
     // Invalid score weight (< 0.0)
     assert!(TrustAttestation::create_and_sign(
@@ -110,7 +119,8 @@ fn test_rejection_of_corrupted_signature_and_invalid_score() {
         200,
         1,
         &issuer_key
-    ).is_err());
+    )
+    .is_err());
 
     let mut attestation = TrustAttestation::create_and_sign(
         issuer_id,
@@ -120,12 +130,15 @@ fn test_rejection_of_corrupted_signature_and_invalid_score() {
         100,
         200,
         1,
-        &issuer_key
-    ).unwrap();
+        &issuer_key,
+    )
+    .unwrap();
 
     // Corrupted signature bytes
     attestation.signature[0] ^= 0xFF;
-    assert!(attestation.verify_signature(&issuer_key.public_key).is_err());
+    assert!(attestation
+        .verify_signature(&issuer_key.public_key)
+        .is_err());
 
     // Public key size mismatch
     assert!(attestation.verify_signature(&[0u8; 32]).is_err());
@@ -147,7 +160,8 @@ fn test_retention_classification_of_wot_envelopes() {
         1500,
         1,
         &issuer_key,
-    ).unwrap();
+    )
+    .unwrap();
 
     let att_env = attestation.to_envelope(&issuer_key.public_key).unwrap();
     assert_eq!(
@@ -162,7 +176,8 @@ fn test_retention_classification_of_wot_envelopes() {
         "revoked".into(),
         2,
         &issuer_key,
-    ).unwrap();
+    )
+    .unwrap();
 
     let rev_env = revocation.to_envelope(&issuer_key.public_key).unwrap();
     assert_eq!(

@@ -14,8 +14,8 @@ use ark_storage::engine::StorageEngine;
 use ark_storage::retention::{classify_retention, RetentionClass, RetentionOutcome};
 use ark_vpn::error::VpnError;
 use ark_vpn::framing::{
-    deframe_fast_packet, deframe_micro_packet, frame_fast_packet, frame_micro_packet,
-    MicroHeader, KIND_VPN_DATA, KIND_VPN_HANDSHAKE, MICRO_HEADER_SIZE,
+    deframe_fast_packet, deframe_micro_packet, frame_fast_packet, frame_micro_packet, MicroHeader,
+    KIND_VPN_DATA, KIND_VPN_HANDSHAKE, MICRO_HEADER_SIZE,
 };
 use ark_vpn::pqmt::{PqmtEngine, VpnSession};
 use bytes::Bytes;
@@ -77,16 +77,21 @@ fn test_pqmt_full_handshake_and_session_establishment() {
 
     // FastHeader check: initial packet has 64-byte FastHeader
     assert!(init_packet.len() >= 64);
-    let (fast_hdr_init, _) = deframe_fast_packet(init_packet.clone()).expect("Deframe init fast header");
+    let (fast_hdr_init, _) =
+        deframe_fast_packet(init_packet.clone()).expect("Deframe init fast header");
     assert_eq!(fast_hdr_init.fast_tag, KIND_VPN_HANDSHAKE);
-    assert_eq!(fast_hdr_init.sender_key_id, engine_a.identity().sender_key_id);
+    assert_eq!(
+        fast_hdr_init.sender_key_id,
+        engine_a.identity().sender_key_id
+    );
 
     // 2. Node B handles HandshakeInit and returns HandshakeResp framed with 64-byte FastHeader
     let resp_packet = engine_b
         .handle_handshake_init(init_packet, timestamp + 1, &mut rng)
         .expect("Handle HandshakeInit failed");
 
-    let (fast_hdr_resp, _) = deframe_fast_packet(resp_packet.clone()).expect("Deframe resp fast header");
+    let (fast_hdr_resp, _) =
+        deframe_fast_packet(resp_packet.clone()).expect("Deframe resp fast header");
     assert_eq!(fast_hdr_resp.fast_tag, KIND_VPN_HANDSHAKE);
 
     // 3. Node A handles HandshakeResp and establishes its session
@@ -142,7 +147,12 @@ fn test_retention_class0_invariant_and_storage_bypass() {
 
     // Envelope for VPN Handshake (0x0009)
     let env_handshake = engine
-        .wrap_in_envelope(KIND_VPN_HANDSHAKE, recipient_id, payload.clone(), 1_700_000_000)
+        .wrap_in_envelope(
+            KIND_VPN_HANDSHAKE,
+            recipient_id,
+            payload.clone(),
+            1_700_000_000,
+        )
         .expect("Envelope creation failed");
 
     // Envelope for VPN Data (0x0008)
@@ -151,17 +161,28 @@ fn test_retention_class0_invariant_and_storage_bypass() {
         .expect("Envelope creation failed");
 
     // Check 1: Classifier classifies both strictly as Class0Ephemeral
-    assert_eq!(classify_retention(&env_handshake), RetentionClass::Class0Ephemeral);
-    assert_eq!(classify_retention(&env_data), RetentionClass::Class0Ephemeral);
+    assert_eq!(
+        classify_retention(&env_handshake),
+        RetentionClass::Class0Ephemeral
+    );
+    assert_eq!(
+        classify_retention(&env_data),
+        RetentionClass::Class0Ephemeral
+    );
 
     // Check 2: Put in StorageEngine completely bypasses disk / Fjall LSM
     let dir = tempdir().expect("Failed to create tempdir");
-    let storage = StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("Failed to open StorageEngine");
+    let storage = StorageEngine::open(dir.path(), StorageConfig::frugal())
+        .expect("Failed to open StorageEngine");
 
-    let outcome_hs = storage.put_envelope(&env_handshake).expect("put_envelope failed");
+    let outcome_hs = storage
+        .put_envelope(&env_handshake)
+        .expect("put_envelope failed");
     assert_eq!(outcome_hs, RetentionOutcome::EphemeralPassed);
 
-    let outcome_data = storage.put_envelope(&env_data).expect("put_envelope failed");
+    let outcome_data = storage
+        .put_envelope(&env_data)
+        .expect("put_envelope failed");
     assert_eq!(outcome_data, RetentionOutcome::EphemeralPassed);
 
     // Ensure database keyspaces remain empty for persistent classes
@@ -240,11 +261,15 @@ fn test_anti_replay_and_monotonic_sequence_enforcement() {
     assert!(session.accept_recv_seq(2).is_ok());
 
     // Duplicate seq (replay attack) rejected
-    let err_replay = session.accept_recv_seq(2).expect_err("Replay must be rejected");
+    let err_replay = session
+        .accept_recv_seq(2)
+        .expect_err("Replay must be rejected");
     assert_eq!(err_replay, VpnError::ReplayDetected(2));
 
     // Lower seq (delayed / replay attack) rejected
-    let err_old = session.accept_recv_seq(1).expect_err("Older packet must be rejected");
+    let err_old = session
+        .accept_recv_seq(1)
+        .expect_err("Older packet must be rejected");
     assert_eq!(err_old, VpnError::ReplayDetected(1));
 
     // Strictly monotonic progression succeeds
@@ -260,8 +285,8 @@ fn test_zero_copy_slicing_and_buffer_performance() {
     let framed = frame_micro_packet(1234, 10, &session_key, &payload);
     assert_eq!(framed.len(), 16 + payload.len());
 
-    let (hdr, deframed) = deframe_micro_packet(&session_key, framed)
-        .expect("Zero-copy deframing failed");
+    let (hdr, deframed) =
+        deframe_micro_packet(&session_key, framed).expect("Zero-copy deframing failed");
 
     assert_eq!(hdr.session_id, 1234);
     assert_eq!(hdr.sequence_nonce, 10);

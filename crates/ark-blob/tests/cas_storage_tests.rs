@@ -36,7 +36,10 @@ fn test_cas_disk_store_atomic_write_and_read() {
     let hex_hash = hex::encode(hash);
     let expected_path = dir.path().join(StoragePaths::BLOBS_DIR).join(&hex_hash);
     assert!(expected_path.exists());
-    assert_eq!(std::fs::metadata(&expected_path).unwrap().len(), SHARD_SIZE as u64);
+    assert_eq!(
+        std::fs::metadata(&expected_path).unwrap().len(),
+        SHARD_SIZE as u64
+    );
 }
 
 #[test]
@@ -90,7 +93,9 @@ fn test_cas_disk_store_streaming_read_bounded_memory() {
     assert_eq!(computed_hash, hash);
 
     // Verify stream integrity check
-    assert!(cas.verify_shard_stream(&hash).expect("verify shard integrity"));
+    assert!(cas
+        .verify_shard_stream(&hash)
+        .expect("verify shard integrity"));
 }
 
 #[test]
@@ -192,8 +197,8 @@ fn test_end_to_end_store_and_stream_reconstruct() {
         StorageEngine::open(dir.path().join("lsm"), StorageConfig::frugal())
             .expect("open storage engine"),
     );
-    let hybrid_store = HybridBlobStore::new(dir.path().join("cas"), storage_engine)
-        .expect("create hybrid store");
+    let hybrid_store =
+        HybridBlobStore::new(dir.path().join("cas"), storage_engine).expect("create hybrid store");
 
     // 5 MB dummy payload
     let payload = vec![0x33u8; 5 * 1024 * 1024];

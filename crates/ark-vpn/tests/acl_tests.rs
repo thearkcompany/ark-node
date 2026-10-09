@@ -1,18 +1,28 @@
-use ark_vpn::acl::{
-    AclEngine, AclVerdict, IpProtocol, VpnAction, VpnPeerInfo, VpnSecurityPolicy,
-};
+use ark_vpn::acl::{AclEngine, AclVerdict, IpProtocol, VpnAction, VpnPeerInfo, VpnSecurityPolicy};
 use ark_vpn::tun::{MockTunAdapter, VirtualTunAdapter};
 use std::net::Ipv4Addr;
 use std::sync::Arc;
 use std::time::Instant;
 
-fn build_ipv4_packet(src: Ipv4Addr, dst: Ipv4Addr, protocol: u8, src_port: u16, dst_port: u16, payload: &[u8]) -> Vec<u8> {
+fn build_ipv4_packet(
+    src: Ipv4Addr,
+    dst: Ipv4Addr,
+    protocol: u8,
+    src_port: u16,
+    dst_port: u16,
+    payload: &[u8],
+) -> Vec<u8> {
     let mut pkt = Vec::new();
     let ihl = 5u8;
     let version_ihl = (4 << 4) | ihl;
     pkt.push(version_ihl);
     pkt.push(0); // DSCP/ECN
-    let total_len = 20 + if protocol == 6 || protocol == 17 { 20 } else { 8 } + payload.len();
+    let total_len =
+        20 + if protocol == 6 || protocol == 17 {
+            20
+        } else {
+            8
+        } + payload.len();
     pkt.extend_from_slice(&(total_len as u16).to_be_bytes());
     pkt.extend_from_slice(&0u16.to_be_bytes()); // ID
     pkt.extend_from_slice(&0u16.to_be_bytes()); // Flags/Fragment
@@ -101,7 +111,10 @@ fn test_acl_declarative_microsegmentation_rules() {
         22,
         b"SSH-2.0",
     );
-    assert_eq!(acl.evaluate_ingress(&stranger_ark_id, 1, &tcp_22_pkt), AclVerdict::Deny);
+    assert_eq!(
+        acl.evaluate_ingress(&stranger_ark_id, 1, &tcp_22_pkt),
+        AclVerdict::Deny
+    );
 
     // 4. Test explicit Deny rule takes priority over wildcard
     acl.add_policy(VpnSecurityPolicy {
@@ -136,9 +149,15 @@ fn test_acl_declarative_microsegmentation_rules() {
     );
 
     // 443 has explicit Deny rule -> Denied even though friend has same owner
-    assert_eq!(acl.evaluate_ingress(&friend_ark_id, 1, &tcp_443_pkt), AclVerdict::Deny);
+    assert_eq!(
+        acl.evaluate_ingress(&friend_ark_id, 1, &tcp_443_pkt),
+        AclVerdict::Deny
+    );
     // Other ports for same owner peer are Allowed under intra-namespace trust
-    assert_eq!(acl.evaluate_ingress(&friend_ark_id, 1, &tcp_8080_pkt), AclVerdict::Allow);
+    assert_eq!(
+        acl.evaluate_ingress(&friend_ark_id, 1, &tcp_8080_pkt),
+        AclVerdict::Allow
+    );
 }
 
 #[test]
@@ -174,14 +193,23 @@ fn test_acl_namespace_isolation_and_quarantine() {
     );
 
     // Intra-namespace: Allowed
-    assert_eq!(acl.evaluate_ingress(&cluster_peer_id, 1, &pkt_udp), AclVerdict::Allow);
+    assert_eq!(
+        acl.evaluate_ingress(&cluster_peer_id, 1, &pkt_udp),
+        AclVerdict::Allow
+    );
 
     // External peer without rule: Quarantine / Default Deny
-    assert_eq!(acl.evaluate_ingress(&external_peer_id, 1, &pkt_udp), AclVerdict::Deny);
+    assert_eq!(
+        acl.evaluate_ingress(&external_peer_id, 1, &pkt_udp),
+        AclVerdict::Deny
+    );
 
     // Unregistered node: Absolute Default Deny
     let unknown_node = [0xFF; 32];
-    assert_eq!(acl.evaluate_ingress(&unknown_node, 1, &pkt_udp), AclVerdict::Deny);
+    assert_eq!(
+        acl.evaluate_ingress(&unknown_node, 1, &pkt_udp),
+        AclVerdict::Deny
+    );
 }
 
 #[test]

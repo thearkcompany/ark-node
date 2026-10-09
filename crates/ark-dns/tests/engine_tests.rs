@@ -4,15 +4,14 @@ use tempfile::tempdir;
 
 use ark_core::FastHeader;
 use ark_dns::anti_sybil::{
-    L2ContractVerifier, KIND_DNS_CLAIM_PUBLIC, TAG_DNS_LEASE_EPOCH,
-    TAG_L2_CONTRACT, TAG_NONCE, TAG_PARAM_D,
+    L2ContractVerifier, KIND_DNS_CLAIM_PUBLIC, TAG_DNS_LEASE_EPOCH, TAG_L2_CONTRACT, TAG_NONCE,
+    TAG_PARAM_D,
 };
 use ark_dns::crypto_name::format_cryptographic_name_from_hash;
 use ark_dns::engine::{DnsPacketHandler, SovereignDnsEngine};
 use ark_dns::error::DnsError;
 use ark_dns::lifecycle::{MockPmtClock, PmtClock};
 use ark_dns::overlay::OverlayRecord;
-
 
 use ark_dns::record::DomainRoutingRecord;
 use ark_protocol::envelope::ArkEnvelope;
@@ -27,18 +26,28 @@ struct TestL2Verifier {
 
 impl TestL2Verifier {
     fn new() -> Self {
-        Self { valid_contracts: Vec::new() }
+        Self {
+            valid_contracts: Vec::new(),
+        }
     }
 
     fn allow(mut self, contract_id: &[u8], owner_key_id: &[u8]) -> Self {
-        self.valid_contracts.push((contract_id.to_vec(), owner_key_id.to_vec()));
+        self.valid_contracts
+            .push((contract_id.to_vec(), owner_key_id.to_vec()));
         self
     }
 }
 
 impl L2ContractVerifier for TestL2Verifier {
-    fn verify_escrow_contract(&self, contract_id: &[u8], owner_key_id: &[u8]) -> Result<bool, DnsError> {
-        Ok(self.valid_contracts.iter().any(|(c, o)| c.as_slice() == contract_id && o.as_slice() == owner_key_id))
+    fn verify_escrow_contract(
+        &self,
+        contract_id: &[u8],
+        owner_key_id: &[u8],
+    ) -> Result<bool, DnsError> {
+        Ok(self
+            .valid_contracts
+            .iter()
+            .any(|(c, o)| c.as_slice() == contract_id && o.as_slice() == owner_key_id))
     }
 }
 
@@ -51,14 +60,7 @@ fn create_valid_claim_envelope(
     routing_addrs: &[String],
     ech_pubkey: &[u8],
 ) -> ArkEnvelope {
-    let fast_header = FastHeader::new(
-        0,
-        128,
-        KIND_DNS_CLAIM_PUBLIC,
-        owner_key_id,
-        [0u8; 16],
-        1,
-    );
+    let fast_header = FastHeader::new(0, 128, KIND_DNS_CLAIM_PUBLIC, owner_key_id, [0u8; 16], 1);
 
     // Payload can carry target_peer_id, routing_addrs, etc.
     let mut payload = Vec::new();
@@ -118,7 +120,9 @@ fn test_tier1_cryptographic_name_resolution() {
     let identity_hash = [0x42u8; 32];
     let crypto_fqdn = format_cryptographic_name_from_hash(&identity_hash).unwrap();
 
-    let response = engine.resolve(&crypto_fqdn, None).expect("Tier 1 resolution should succeed");
+    let response = engine
+        .resolve(&crypto_fqdn, None)
+        .expect("Tier 1 resolution should succeed");
     assert_eq!(response.target_peer_id, identity_hash.to_vec());
     assert_eq!(response.owner_key_id, identity_hash[..16].to_vec());
     assert_eq!(response.expires_at, u64::MAX);
@@ -151,10 +155,14 @@ fn test_tier2_private_overlay_resolution() {
         created_at: 1_000_000,
     };
 
-    engine.register_private_overlay(&caller_ark_id, &overlay).unwrap();
+    engine
+        .register_private_overlay(&caller_ark_id, &overlay)
+        .unwrap();
 
     // Query with matching caller ArkID
-    let res = engine.resolve("nas.ark", Some(&caller_ark_id)).expect("overlay should resolve");
+    let res = engine
+        .resolve("nas.ark", Some(&caller_ark_id))
+        .expect("overlay should resolve");
     assert_eq!(res.routing_addrs, vec!["192.168.1.100".to_string()]);
     assert_eq!(res.owner_key_id, caller_ark_id[..16].to_vec());
     assert_eq!(res.target_peer_id, "homelab-nas".as_bytes().to_vec());
@@ -202,10 +210,14 @@ fn test_tier3_public_patricia_trie_resolution_and_merkle_proof() {
     );
 
     // Dynamic registration
-    engine.register_public_domain(&envelope).expect("registration must succeed");
+    engine
+        .register_public_domain(&envelope)
+        .expect("registration must succeed");
 
     // Resolve Tier 3
-    let res = engine.resolve("alice.ark", None).expect("public resolution succeeds");
+    let res = engine
+        .resolve("alice.ark", None)
+        .expect("public resolution succeeds");
     assert_eq!(res.owner_key_id, owner_a.to_vec());
     assert_eq!(res.target_peer_id, target_peer.to_vec());
     assert_eq!(res.routing_addrs, routing_addrs);
@@ -221,7 +233,8 @@ fn test_tier3_public_patricia_trie_resolution_and_merkle_proof() {
     );
 
     // Verify Merkle inclusion proof
-    let proof = ark_dns::trie::MerkleProof::from_bytes(&res.merkle_inclusion_proof).expect("proof decode");
+    let proof =
+        ark_dns::trie::MerkleProof::from_bytes(&res.merkle_inclusion_proof).expect("proof decode");
     assert_eq!(proof.fqdn, "alice.ark");
     let root = engine.root_hash();
     let record = engine.trie().get("alice.ark").unwrap();
@@ -266,7 +279,9 @@ fn test_tier_precedence_overlay_over_public() {
         txt_records: vec![],
         created_at: 1_000_000,
     };
-    engine.register_private_overlay(&caller_ark_id, &overlay).unwrap();
+    engine
+        .register_private_overlay(&caller_ark_id, &overlay)
+        .unwrap();
 
     // Precedence: caller_ark_id gets private overlay (Tier 2 takes precedence over Tier 3)
     let res_overlay = engine.resolve("shop.ark", Some(&caller_ark_id)).unwrap();
@@ -275,7 +290,10 @@ fn test_tier_precedence_overlay_over_public() {
 
     // Other caller gets public record (Tier 3)
     let res_public = engine.resolve("shop.ark", None).unwrap();
-    assert_eq!(res_public.routing_addrs, vec!["/ip4/1.1.1.1/udp/4433/quic-v1".to_string()]);
+    assert_eq!(
+        res_public.routing_addrs,
+        vec!["/ip4/1.1.1.1/udp/4433/quic-v1".to_string()]
+    );
     assert_eq!(res_public.target_peer_id, vec![0x11u8; 32]);
 }
 
@@ -331,7 +349,10 @@ fn test_grace_period_and_renewal_workflow() {
         &[],
     );
     let err = engine.renew_public_domain(&env_b).unwrap_err();
-    assert!(matches!(err, DnsError::GracePeriodRenewalUnauthorized { .. }));
+    assert!(matches!(
+        err,
+        DnsError::GracePeriodRenewalUnauthorized { .. }
+    ));
 
     // Authorized renewal by Owner A
     let env_renew_a = create_valid_claim_envelope(
@@ -343,7 +364,9 @@ fn test_grace_period_and_renewal_workflow() {
         &["/ip4/127.0.0.1/tcp/80".to_string()],
         &[],
     );
-    engine.renew_public_domain(&env_renew_a).expect("Owner renewal succeeds");
+    engine
+        .renew_public_domain(&env_renew_a)
+        .expect("Owner renewal succeeds");
 
     // Back to active
     let res_renewed = engine.resolve("renewme.ark", None).unwrap();
@@ -393,7 +416,10 @@ fn test_eviction_and_reregistration() {
     assert_eq!(evicted[0].fqdn, "expireme.ark");
 
     // Resolve returns NotFound
-    assert!(matches!(engine.resolve("expireme.ark", None), Err(DnsError::NotFound(_))));
+    assert!(matches!(
+        engine.resolve("expireme.ark", None),
+        Err(DnsError::NotFound(_))
+    ));
 
     // Owner B can now register fresh claim
     let env_b = create_valid_claim_envelope(
@@ -405,7 +431,9 @@ fn test_eviction_and_reregistration() {
         &[],
         &[],
     );
-    engine.register_public_domain(&env_b).expect("Fresh registration by new owner succeeds");
+    engine
+        .register_public_domain(&env_b)
+        .expect("Fresh registration by new owner succeeds");
 
     let res_b = engine.resolve("expireme.ark", None).unwrap();
     assert_eq!(res_b.owner_key_id, owner_b.to_vec());
@@ -429,7 +457,9 @@ fn test_protobuf_wire_serialization_and_packet_handler() {
     let crypto_fqdn = format_cryptographic_name_from_hash(&identity_hash).unwrap();
 
     // Using DnsPacketHandler trait
-    let wire_bytes = engine.handle_dns_query_packet(&crypto_fqdn, None).expect("packet handler succeeds");
+    let wire_bytes = engine
+        .handle_dns_query_packet(&crypto_fqdn, None)
+        .expect("packet handler succeeds");
     assert!(!wire_bytes.is_empty());
 
     // Decode DomainResolveResponse from protobuf wire bytes
@@ -471,7 +501,9 @@ fn test_concurrent_three_tier_resolution_workflows() {
         txt_records: vec![],
         created_at: 1_000_000,
     };
-    engine.register_private_overlay(&caller_ark_id, &overlay).unwrap();
+    engine
+        .register_private_overlay(&caller_ark_id, &overlay)
+        .unwrap();
 
     // Setup Tier 3
     let public_record = DomainRoutingRecord {
@@ -543,7 +575,9 @@ fn test_concurrent_three_tier_resolution_workflows() {
         assert!(iters > 0);
     }
     stop.store(true, std::sync::atomic::Ordering::Relaxed);
-    let writes = writer_handle.join().expect("writer thread should not panic");
+    let writes = writer_handle
+        .join()
+        .expect("writer thread should not panic");
     assert!(writes > 0);
 }
 
@@ -581,7 +615,10 @@ fn test_private_overlay_crud_facade() {
     engine.register_private_overlay(&owner, &overlay2).unwrap();
 
     // Get
-    let fetched = engine.get_private_overlay(&owner, "app1.ark").unwrap().unwrap();
+    let fetched = engine
+        .get_private_overlay(&owner, "app1.ark")
+        .unwrap()
+        .unwrap();
     assert_eq!(fetched.target_ip, IpAddr::V4(Ipv4Addr::new(10, 0, 0, 10)));
 
     // List
@@ -590,7 +627,10 @@ fn test_private_overlay_crud_facade() {
 
     // Remove
     assert!(engine.remove_private_overlay(&owner, "app1.ark").unwrap());
-    assert!(engine.get_private_overlay(&owner, "app1.ark").unwrap().is_none());
+    assert!(engine
+        .get_private_overlay(&owner, "app1.ark")
+        .unwrap()
+        .is_none());
     assert!(!engine.remove_private_overlay(&owner, "app1.ark").unwrap());
 }
 
@@ -611,9 +651,7 @@ fn test_builder_defaults_and_validation() {
 
     // Missing l2_verifier returns Err(DnsError::InvalidRecord)
     let storage2 = StorageEngine::open(dir.path().join("s2"), StorageConfig::frugal()).unwrap();
-    let res = SovereignDnsEngine::builder()
-        .storage(storage2)
-        .build();
+    let res = SovereignDnsEngine::builder().storage(storage2).build();
 
     let err = match res {
         Ok(_) => panic!("builder must fail when l2_verifier is omitted"),
@@ -627,5 +665,3 @@ fn test_builder_defaults_and_validation() {
         other => panic!("expected InvalidRecord, got {:?}", other),
     }
 }
-
-

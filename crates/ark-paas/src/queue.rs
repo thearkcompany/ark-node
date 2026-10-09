@@ -1,14 +1,14 @@
+use dashmap::DashMap;
+use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use dashmap::DashMap;
-use parking_lot::Mutex;
-use serde::{Deserialize, Serialize};
 
-use ark_storage::{Keyspace, KeyspaceCreateOptions, PersistMode, StorageEngine};
 use crate::error::{ArkQueueError, QueueResult as Result};
 use crate::lease::JobLease;
+use ark_storage::{Keyspace, KeyspaceCreateOptions, PersistMode, StorageEngine};
 
 /// Task lifecycle status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -102,9 +102,7 @@ impl ArkQueue {
     pub fn open(storage: Arc<StorageEngine>, config: QueueConfig) -> Result<Self> {
         let tasks_keyspace = storage
             .db()
-            .keyspace(&config.keyspace_name, || {
-                KeyspaceCreateOptions::default()
-            })
+            .keyspace(&config.keyspace_name, KeyspaceCreateOptions::default)
             .map_err(|e| ArkQueueError::Database(e.to_string()))?;
 
         let queue = Self {
@@ -133,7 +131,8 @@ impl ArkQueue {
             task.lamport_clock = current_clock;
         } else {
             // Advance local clock if task clock is higher
-            self.lamport_counter.fetch_max(task.lamport_clock, Ordering::SeqCst);
+            self.lamport_counter
+                .fetch_max(task.lamport_clock, Ordering::SeqCst);
         }
 
         task.status = TaskStatus::Pending;
@@ -141,8 +140,8 @@ impl ArkQueue {
 
         // Persist durably to Fjall LSM
         let key = task_id.as_bytes();
-        let bytes = serde_json::to_vec(&task)
-            .map_err(|e| ArkQueueError::Serialization(e.to_string()))?;
+        let bytes =
+            serde_json::to_vec(&task).map_err(|e| ArkQueueError::Serialization(e.to_string()))?;
 
         self.tasks_keyspace
             .insert(key, bytes)
@@ -198,7 +197,8 @@ impl ArkQueue {
         } else {
             let mut completed_task = lease.task().clone();
             completed_task.status = TaskStatus::Completed;
-            self.completed_in_memory.insert(task_id.clone(), completed_task);
+            self.completed_in_memory
+                .insert(task_id.clone(), completed_task);
         }
 
         Ok(())
@@ -238,7 +238,8 @@ impl ArkQueue {
     /// via MERGE_POLICY_LWW_BIVARIATE: max(lamport_clock) followed by lexicographical tie-break max(id).
     pub fn apply_mutation_lww(&self, mutation: Task) -> Result<LwwOutcome> {
         let task_id = &mutation.id;
-        self.lamport_counter.fetch_max(mutation.lamport_clock, Ordering::SeqCst);
+        self.lamport_counter
+            .fetch_max(mutation.lamport_clock, Ordering::SeqCst);
 
         let existing = self.get_task(task_id)?;
         if let Some(existing_task) = existing {
@@ -264,8 +265,8 @@ impl ArkQueue {
     /// Helper to persist a task record to Fjall LSM storage.
     fn persist_task_to_storage(&self, task: &Task) -> Result<()> {
         let key = task.id.as_bytes();
-        let bytes = serde_json::to_vec(task)
-            .map_err(|e| ArkQueueError::Serialization(e.to_string()))?;
+        let bytes =
+            serde_json::to_vec(task).map_err(|e| ArkQueueError::Serialization(e.to_string()))?;
         self.tasks_keyspace
             .insert(key, bytes)
             .map_err(|e| ArkQueueError::Database(e.to_string()))?;
@@ -376,7 +377,9 @@ impl ArkQueue {
         let mut rehydrated = Vec::new();
 
         for item in self.tasks_keyspace.iter() {
-            let val = item.value().map_err(|e| ArkQueueError::Database(e.to_string()))?;
+            let val = item
+                .value()
+                .map_err(|e| ArkQueueError::Database(e.to_string()))?;
             if let Ok(task) = serde_json::from_slice::<Task>(&val) {
                 if task.status == TaskStatus::Pending || task.status == TaskStatus::Dispatched {
                     rehydrated.push(task);
@@ -393,7 +396,8 @@ impl ArkQueue {
 
         let mut ready = self.ready_queue.lock();
         for task in rehydrated {
-            self.lamport_counter.fetch_max(task.lamport_clock, Ordering::SeqCst);
+            self.lamport_counter
+                .fetch_max(task.lamport_clock, Ordering::SeqCst);
             ready.push_back(task.id);
         }
 

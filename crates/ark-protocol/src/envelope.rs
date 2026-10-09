@@ -1,8 +1,8 @@
 //! ArkEnvelope v1 canonical transport container with rigid <= 64 KB ceiling.
 
+use crate::tags::BinaryTag;
 use ark_core::constants::{MAGIC_BYTES, MAX_ENVELOPE_SIZE, MAX_PAYLOAD_SIZE};
 use ark_core::error::{ArkError, Result};
-use crate::tags::BinaryTag;
 use prost::Message;
 
 #[derive(Clone, PartialEq, Message)]
@@ -88,8 +88,7 @@ impl ArkEnvelope {
             return Err(ArkError::EnvelopeTooLarge(bytes.len(), MAX_ENVELOPE_SIZE));
         }
 
-        let env = Self::decode(bytes)
-            .map_err(|e| ArkError::SerializationError(e.to_string()))?;
+        let env = Self::decode(bytes).map_err(|e| ArkError::SerializationError(e.to_string()))?;
 
         if env.magic != MAGIC_BYTES {
             return Err(ArkError::InvalidMagic(0));

@@ -1,9 +1,9 @@
 //! Wire-framing protocol codec combining raw 64-byte FastHeader prefix and Protobuf ArkEnvelope.
 
+use crate::envelope::ArkEnvelope;
 use ark_core::constants::{FAST_HEADER_SIZE, MAX_ENVELOPE_SIZE};
 use ark_core::error::{ArkError, Result};
 use ark_core::fast_header::FastHeader;
-use crate::envelope::ArkEnvelope;
 
 pub struct WireFrame;
 
@@ -15,7 +15,10 @@ impl WireFrame {
 
         let total_size = FAST_HEADER_SIZE + env_bytes.len();
         if total_size > MAX_ENVELOPE_SIZE + FAST_HEADER_SIZE {
-            return Err(ArkError::EnvelopeTooLarge(total_size, MAX_ENVELOPE_SIZE + FAST_HEADER_SIZE));
+            return Err(ArkError::EnvelopeTooLarge(
+                total_size,
+                MAX_ENVELOPE_SIZE + FAST_HEADER_SIZE,
+            ));
         }
 
         let mut out = Vec::with_capacity(total_size);

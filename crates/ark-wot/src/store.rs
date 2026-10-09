@@ -1,16 +1,16 @@
 //! Fjall LSM Persistent Storage & Lock-Free In-Memory Concurrent Evaluation Cache (ACP-04).
 
-use std::sync::Arc;
-use dashmap::DashMap;
-use parking_lot::RwLock;
-use ark_core::error::{ArkError, Result};
-use ark_crdt::{MstConfig, MstEngine};
-use ark_protocol::envelope::ArkEnvelope;
-use ark_storage::{Keyspace, StorageEngine};
 use crate::crypto::{TrustAttestation, TrustRevocation};
 use crate::engine::CRDT_NAMESPACE_WOT;
 use crate::graph::{LocalTrustGraph, TrustEvaluation, TrustTier};
 use crate::temporal::TemporalValidator;
+use ark_core::error::{ArkError, Result};
+use ark_crdt::{MstConfig, MstEngine};
+use ark_protocol::envelope::ArkEnvelope;
+use ark_storage::{Keyspace, StorageEngine};
+use dashmap::DashMap;
+use parking_lot::RwLock;
+use std::sync::Arc;
 
 pub const KEYSPACE_WOT_ATTESTATIONS: &str = "wot_attestations";
 pub const KEYSPACE_WOT_REVOCATIONS: &str = "wot_revocations";
@@ -102,8 +102,15 @@ impl WotStore {
         for item in self.attestations_ks.iter() {
             if let Ok(val) = item.value() {
                 if let Ok(attestation) = TrustAttestation::from_cbor(&val) {
-                    if !self.validator.is_revoked(&attestation.issuer_id, &attestation.subject_id) {
-                        g.add_edge(attestation.issuer_id, attestation.subject_id, attestation.score_weight);
+                    if !self
+                        .validator
+                        .is_revoked(&attestation.issuer_id, &attestation.subject_id)
+                    {
+                        g.add_edge(
+                            attestation.issuer_id,
+                            attestation.subject_id,
+                            attestation.score_weight,
+                        );
                     }
                 }
             }
@@ -117,7 +124,11 @@ impl WotStore {
     }
 
     /// Save a verified TrustAttestation to Fjall LSM and update cache.
-    pub fn save_attestation(&self, attestation: &TrustAttestation, issuer_pubkey: &[u8]) -> Result<()> {
+    pub fn save_attestation(
+        &self,
+        attestation: &TrustAttestation,
+        issuer_pubkey: &[u8],
+    ) -> Result<()> {
         attestation.verify_signature(issuer_pubkey)?;
 
         let key = Self::make_relation_key(&attestation.issuer_id, &attestation.subject_id);
@@ -137,9 +148,16 @@ impl WotStore {
             .map_err(|e| ArkError::Internal(e.to_string()))?;
 
         // Incremental graph update
-        if !self.validator.is_revoked(&attestation.issuer_id, &attestation.subject_id) {
+        if !self
+            .validator
+            .is_revoked(&attestation.issuer_id, &attestation.subject_id)
+        {
             let mut g = self.graph.write();
-            g.add_edge(attestation.issuer_id, attestation.subject_id, attestation.score_weight);
+            g.add_edge(
+                attestation.issuer_id,
+                attestation.subject_id,
+                attestation.score_weight,
+            );
             g.compute_ppr();
         }
 
@@ -148,7 +166,11 @@ impl WotStore {
     }
 
     /// Save a verified TrustRevocation to Fjall LSM, index into MST, and immediately update cache.
-    pub fn save_revocation(&self, revocation: &TrustRevocation, issuer_pubkey: &[u8]) -> Result<()> {
+    pub fn save_revocation(
+        &self,
+        revocation: &TrustRevocation,
+        issuer_pubkey: &[u8],
+    ) -> Result<()> {
         revocation.verify_signature(issuer_pubkey)?;
 
         let key = Self::make_relation_key(&revocation.issuer_id, &revocation.subject_id);
@@ -331,4 +353,3 @@ impl WotStore {
         }
     }
 }
-

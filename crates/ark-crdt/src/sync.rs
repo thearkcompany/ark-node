@@ -11,14 +11,14 @@
 //!   - Strict anti-DoS checks: mismatched hashes or depth > 16 return validation errors and reject.
 //!   - Incorporates missing envelopes and nodes into local storage and tree index.
 
-use std::collections::{HashSet, VecDeque};
-use sha3::{Digest, Sha3_256};
-use ark_protocol::envelope::ArkEnvelope;
-use ark_protocol::{MstEntryWire, MstNodeWire, MstSyncRequest, MstSyncResponse};
-use ark_storage::StorageEngine;
 use crate::error::{ArkCrdtError, Result};
 use crate::mst::{MstEntry, MstNode};
 use crate::store::MstStore;
+use ark_protocol::envelope::ArkEnvelope;
+use ark_protocol::{MstEntryWire, MstNodeWire, MstSyncRequest, MstSyncResponse};
+use ark_storage::StorageEngine;
+use sha3::{Digest, Sha3_256};
+use std::collections::{HashSet, VecDeque};
 
 /// Message kind for MST synchronization stream frames.
 pub const KIND_KV_MST_SYNC: u32 = 0x0006;
@@ -229,14 +229,16 @@ pub fn handle_sync_request(
                             let end_ok = req.key_range_end.is_empty()
                                 || e.key.as_slice() <= req.key_range_end.as_slice();
                             start_ok && end_ok
-                        }) || (req.key_range_start.is_empty() && req.key_range_end.is_empty());
+                        }) || (req.key_range_start.is_empty()
+                            && req.key_range_end.is_empty());
 
                         if in_range {
                             for entry in &node_clone.entries {
                                 if collected_envelope_ids.len() < MAX_SYNC_BATCH_KEYS
                                     && collected_envelope_ids.insert(entry.envelope_id)
                                 {
-                                    if let Ok(Some(env)) = storage.get_envelope(&entry.envelope_id) {
+                                    if let Ok(Some(env)) = storage.get_envelope(&entry.envelope_id)
+                                    {
                                         response_envelopes.push(env.into());
                                     }
                                 }
@@ -314,9 +316,8 @@ pub fn apply_sync_response(
     // Phase 2: Ingest missing envelopes into storage engine
     for proto_envelope in &res.missing_envelopes {
         let envelope: ArkEnvelope = proto_envelope.clone().into();
-        if let Ok(
-            ark_storage::RetentionOutcome::Stored | ark_storage::RetentionOutcome::Replaced,
-        ) = storage.put_envelope(&envelope)
+        if let Ok(ark_storage::RetentionOutcome::Stored | ark_storage::RetentionOutcome::Replaced) =
+            storage.put_envelope(&envelope)
         {
             stats.envelopes_stored += 1;
         }
@@ -327,12 +328,7 @@ pub fn apply_sync_response(
         let (node, _child_hashes) = wire_to_node(wire_node)?;
         for entry in node.entries {
             // Apply bivariate LWW to update local MST store
-            let _updated = store.put(
-                namespace,
-                entry.key,
-                entry.envelope_id,
-                entry.timestamp,
-            )?;
+            let _updated = store.put(namespace, entry.key, entry.envelope_id, entry.timestamp)?;
             stats.entries_updated += 1;
         }
         stats.nodes_applied += 1;

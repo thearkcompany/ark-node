@@ -1,7 +1,7 @@
-use ark_wot::graph::{LocalTrustGraph, TrustTier};
-use ark_wot::crypto::{CapabilityScopes, TrustAttestation};
 use ark_crypto::fn_dsa::FnDsaKeyPair;
 use ark_crypto::identity::Identity;
+use ark_wot::crypto::{CapabilityScopes, TrustAttestation};
+use ark_wot::graph::{LocalTrustGraph, TrustTier};
 use rand::rngs::OsRng;
 
 #[test]
@@ -33,7 +33,8 @@ fn test_trust_graph_ppr_and_tier_derivation() {
         1000 + 30 * 86400,
         1,
         &local_key,
-    ).unwrap();
+    )
+    .unwrap();
     graph.add_edge(att_a.issuer_id, att_a.subject_id, 0.95);
 
     // Edge: peer_a -> peer_b with weight 0.8
@@ -46,7 +47,8 @@ fn test_trust_graph_ppr_and_tier_derivation() {
         1000 + 30 * 86400,
         2,
         &peer_a_key,
-    ).unwrap();
+    )
+    .unwrap();
     graph.add_edge(att_b.issuer_id, att_b.subject_id, 0.8);
 
     graph.compute_ppr();
@@ -54,7 +56,10 @@ fn test_trust_graph_ppr_and_tier_derivation() {
     let eval_a = graph.evaluate_trust(&peer_a);
     assert_eq!(eval_a.distance, 1);
     assert!(eval_a.score >= 0.50, "peer_a score: {}", eval_a.score);
-    assert!(matches!(eval_a.tier, TrustTier::CorePeer | TrustTier::Trusted));
+    assert!(matches!(
+        eval_a.tier,
+        TrustTier::CorePeer | TrustTier::Trusted
+    ));
 
     let eval_b = graph.evaluate_trust(&peer_b);
     assert_eq!(eval_b.distance, 2);
@@ -108,8 +113,12 @@ fn test_sybil_collusion_ring_resistance() {
     let eval_entry = graph.evaluate_trust(&sybil_entry);
     for s_node in &sybil_nodes[1..] {
         let eval_s = graph.evaluate_trust(s_node);
-        assert!(eval_s.score <= eval_entry.score + 0.01,
-            "Sybil internal node score {} exceeded bottleneck {}", eval_s.score, eval_entry.score);
+        assert!(
+            eval_s.score <= eval_entry.score + 0.01,
+            "Sybil internal node score {} exceeded bottleneck {}",
+            eval_s.score,
+            eval_entry.score
+        );
         assert_ne!(eval_s.tier, TrustTier::CorePeer);
     }
 }

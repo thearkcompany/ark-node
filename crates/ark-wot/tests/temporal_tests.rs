@@ -1,7 +1,9 @@
 use ark_crypto::fn_dsa::FnDsaKeyPair;
 use ark_crypto::identity::Identity;
 use ark_wot::crypto::{CapabilityScopes, TrustAttestation, TrustRevocation};
-use ark_wot::temporal::{compute_decayed_weight, RevocationIndex, TemporalValidator, HALF_LIFE_SECS};
+use ark_wot::temporal::{
+    compute_decayed_weight, RevocationIndex, TemporalValidator, HALF_LIFE_SECS,
+};
 use rand::rngs::OsRng;
 
 #[test]
@@ -58,7 +60,10 @@ fn test_temporal_validator_expiration_and_revocation_precedence() {
 
     // 2. Expired attestation at t = expires_pmt + 1 sec
     let eval_expired = validator.evaluate_attestation(&attestation, expires_pmt + 1);
-    assert_eq!(eval_expired, None, "Expired attestation must be rejected/filtered");
+    assert_eq!(
+        eval_expired, None,
+        "Expired attestation must be rejected/filtered"
+    );
 
     // 3. Register revocation at t = issued_pmt + 2 days
     let revocation = TrustRevocation::create_and_sign(
@@ -101,7 +106,8 @@ fn test_simulated_time_travel_and_adversarial_revocation() {
         "second revocation".into(),
         2,
         &issuer_key,
-    ).unwrap();
+    )
+    .unwrap();
 
     let rev_old = TrustRevocation::create_and_sign(
         issuer_id,
@@ -110,13 +116,26 @@ fn test_simulated_time_travel_and_adversarial_revocation() {
         "first revocation".into(),
         1,
         &issuer_key,
-    ).unwrap();
+    )
+    .unwrap();
 
     index.record(rev_new.clone());
     assert_eq!(index.len(), 1);
-    assert_eq!(index.get_revocation(&issuer_id, &subject_id).unwrap().reason, "second revocation");
+    assert_eq!(
+        index
+            .get_revocation(&issuer_id, &subject_id)
+            .unwrap()
+            .reason,
+        "second revocation"
+    );
 
     // Recording older should not supersede newer
     index.record(rev_old);
-    assert_eq!(index.get_revocation(&issuer_id, &subject_id).unwrap().reason, "second revocation");
+    assert_eq!(
+        index
+            .get_revocation(&issuer_id, &subject_id)
+            .unwrap()
+            .reason,
+        "second revocation"
+    );
 }

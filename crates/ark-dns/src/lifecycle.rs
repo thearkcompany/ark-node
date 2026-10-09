@@ -34,7 +34,6 @@ pub use ark_time::{MockPmtClock, PmtClock, SystemPmtClock};
 pub type SystemTimeProvider = SystemPmtClock;
 pub type MockTimeProvider = MockPmtClock;
 
-
 /// Lifecycle state of a sovereign `.ark` domain lease.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DomainLeaseState {
@@ -176,7 +175,8 @@ impl LeaseLifecycleEngine {
                     });
                 }
                 DomainLeaseState::GracePeriod => {
-                    let is_same_owner: bool = bool::from(existing.owner_key_id.ct_eq(&record.owner_key_id));
+                    let is_same_owner: bool =
+                        bool::from(existing.owner_key_id.ct_eq(&record.owner_key_id));
                     if !is_same_owner {
                         return Err(DnsError::GracePeriodRenewalUnauthorized {
                             fqdn: record.fqdn.clone(),
@@ -213,15 +213,15 @@ impl LeaseLifecycleEngine {
         let now = self.clock.now_pmt();
         Self::validate_lease_duration(now, record.expires_at)?;
 
-        let existing = self
-            .trie
-            .get(&record.fqdn)
-            .ok_or_else(|| DnsError::InvalidRecord(format!("Domain '{}' is not registered", record.fqdn)))?;
+        let existing = self.trie.get(&record.fqdn).ok_or_else(|| {
+            DnsError::InvalidRecord(format!("Domain '{}' is not registered", record.fqdn))
+        })?;
 
         let state = DomainLeaseState::compute(existing.expires_at, now);
         match state {
             DomainLeaseState::Active => {
-                let is_same_owner: bool = bool::from(existing.owner_key_id.ct_eq(&record.owner_key_id));
+                let is_same_owner: bool =
+                    bool::from(existing.owner_key_id.ct_eq(&record.owner_key_id));
                 if !is_same_owner {
                     return Err(DnsError::UnauthorizedRenewal {
                         fqdn: record.fqdn.clone(),
@@ -231,7 +231,8 @@ impl LeaseLifecycleEngine {
                 }
             }
             DomainLeaseState::GracePeriod => {
-                let is_same_owner: bool = bool::from(existing.owner_key_id.ct_eq(&record.owner_key_id));
+                let is_same_owner: bool =
+                    bool::from(existing.owner_key_id.ct_eq(&record.owner_key_id));
                 if !is_same_owner {
                     return Err(DnsError::GracePeriodRenewalUnauthorized {
                         fqdn: record.fqdn.clone(),

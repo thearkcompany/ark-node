@@ -69,7 +69,9 @@ impl TrustAttestation {
         keypair: &FnDsaKeyPair,
     ) -> Result<Self> {
         if !(0.0..=1.0).contains(&score_weight) {
-            return Err(ArkError::CryptoError("score_weight must be in [0.0, 1.0]".into()));
+            return Err(ArkError::CryptoError(
+                "score_weight must be in [0.0, 1.0]".into(),
+            ));
         }
 
         let mut attestation = Self {
@@ -110,17 +112,23 @@ impl TrustAttestation {
     /// Verifies the attestation signature against issuer public key and ensures pubkey derives issuer_id.
     pub fn verify_signature(&self, issuer_pubkey: &[u8]) -> Result<()> {
         if issuer_pubkey.len() != FN_DSA_512_PUBKEY_SIZE {
-            return Err(ArkError::CryptoError("Invalid issuer public key size".into()));
+            return Err(ArkError::CryptoError(
+                "Invalid issuer public key size".into(),
+            ));
         }
 
         // Verify ArkID derivation: issuer_id = SHA3-256(pubkey)
         let derived_issuer_id: [u8; 32] = Sha3_256::digest(issuer_pubkey).into();
         if self.issuer_id != derived_issuer_id {
-            return Err(ArkError::CryptoError("Public key does not match issuer_id".into()));
+            return Err(ArkError::CryptoError(
+                "Public key does not match issuer_id".into(),
+            ));
         }
 
         if !(0.0..=1.0).contains(&self.score_weight) {
-            return Err(ArkError::CryptoError("Invalid score_weight out of range".into()));
+            return Err(ArkError::CryptoError(
+                "Invalid score_weight out of range".into(),
+            ));
         }
 
         let digest = self.signing_digest();
@@ -137,8 +145,7 @@ impl TrustAttestation {
 
     /// Deserializes attestation from CBOR.
     pub fn from_cbor(bytes: &[u8]) -> Result<Self> {
-        ciborium::from_reader(bytes)
-            .map_err(|e| ArkError::SerializationError(e.to_string()))
+        ciborium::from_reader(bytes).map_err(|e| ArkError::SerializationError(e.to_string()))
     }
 
     /// Packages the attestation into an ArkEnvelope with KIND_WOT_ATTESTATION (0x000A)
@@ -249,12 +256,16 @@ impl TrustRevocation {
 
     pub fn verify_signature(&self, issuer_pubkey: &[u8]) -> Result<()> {
         if issuer_pubkey.len() != FN_DSA_512_PUBKEY_SIZE {
-            return Err(ArkError::CryptoError("Invalid issuer public key size".into()));
+            return Err(ArkError::CryptoError(
+                "Invalid issuer public key size".into(),
+            ));
         }
 
         let derived_issuer_id: [u8; 32] = Sha3_256::digest(issuer_pubkey).into();
         if self.issuer_id != derived_issuer_id {
-            return Err(ArkError::CryptoError("Public key does not match issuer_id".into()));
+            return Err(ArkError::CryptoError(
+                "Public key does not match issuer_id".into(),
+            ));
         }
 
         let digest = self.signing_digest();
@@ -269,8 +280,7 @@ impl TrustRevocation {
     }
 
     pub fn from_cbor(bytes: &[u8]) -> Result<Self> {
-        ciborium::from_reader(bytes)
-            .map_err(|e| ArkError::SerializationError(e.to_string()))
+        ciborium::from_reader(bytes).map_err(|e| ArkError::SerializationError(e.to_string()))
     }
 
     pub fn to_envelope(&self, issuer_pubkey: &[u8]) -> Result<ArkEnvelope> {

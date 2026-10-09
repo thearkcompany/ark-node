@@ -60,7 +60,9 @@ impl SafeGhostLock {
     /// Acquire a safe-ghost lock for an uploaded or cached blob.
     pub fn lock(&self, blob_cid: [u8; 32]) {
         let mut locks = self.locks.write().unwrap();
-        locks.entry(blob_cid).or_insert_with(|| GhostLockEntry::new(blob_cid));
+        locks
+            .entry(blob_cid)
+            .or_insert_with(|| GhostLockEntry::new(blob_cid));
     }
 
     /// Check if a blob is currently locked against eviction.
@@ -75,14 +77,18 @@ impl SafeGhostLock {
     /// Record receipt of verified `KIND_HOMELAB_ACK` for a blob.
     pub fn record_homelab_ack(&self, blob_cid: &[u8; 32]) {
         let mut locks = self.locks.write().unwrap();
-        let entry = locks.entry(*blob_cid).or_insert_with(|| GhostLockEntry::new(*blob_cid));
+        let entry = locks
+            .entry(*blob_cid)
+            .or_insert_with(|| GhostLockEntry::new(*blob_cid));
         entry.homelab_acknowledged = true;
     }
 
     /// Record a successfully verified Proof-of-Retrievability challenge against a keeper.
     pub fn record_por_challenge_success(&self, blob_cid: &[u8; 32], keeper_id: [u8; 32]) {
         let mut locks = self.locks.write().unwrap();
-        let entry = locks.entry(*blob_cid).or_insert_with(|| GhostLockEntry::new(*blob_cid));
+        let entry = locks
+            .entry(*blob_cid)
+            .or_insert_with(|| GhostLockEntry::new(*blob_cid));
         entry.verified_por_keepers.insert(keeper_id);
     }
 

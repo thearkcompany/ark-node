@@ -1,6 +1,6 @@
-use std::path::PathBuf;
-use std::net::SocketAddr;
 use ark_storage::StorageConfig;
+use std::net::SocketAddr;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {

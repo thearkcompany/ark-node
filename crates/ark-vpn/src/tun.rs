@@ -9,9 +9,9 @@
 //! Additionally, TCP MSS clamping is performed on TCP SYN packets traversing the adapter
 //! to ensure TCP endpoints negotiate segment sizes fitting within the 1,200-byte boundary.
 
+use crate::error::{Result, VpnError};
 use async_trait::async_trait;
 use tokio::sync::mpsc;
-use crate::error::{Result, VpnError};
 
 /// Safe MTU ceiling calibrated to fit within 1,280-byte WAN floor with headroom for FastHeader (64B) + outer headers.
 pub const DEFAULT_SAFE_MTU: usize = 1200;
@@ -308,12 +308,12 @@ fn clamp_tcp_options(options: &mut [u8], max_mss: u16) -> bool {
 /// Compute Internet Checksum (RFC 1071).
 fn compute_checksum(bytes: &[u8]) -> u16 {
     let mut sum: u32 = 0;
-    let mut chunks = bytes.chunks_exact(2);
-    for chunk in &mut chunks {
+    let (chunks, remainder) = bytes.as_chunks::<2>();
+    for chunk in chunks {
         let word = u16::from_be_bytes([chunk[0], chunk[1]]) as u32;
         sum = sum.wrapping_add(word);
     }
-    if let Some(&rem) = chunks.remainder().first() {
+    if let Some(&rem) = remainder.first() {
         sum = sum.wrapping_add((rem as u32) << 8);
     }
     while (sum >> 16) != 0 {

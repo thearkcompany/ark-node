@@ -108,7 +108,10 @@ impl Cli {
                 .unwrap_or_else(|| PathBuf::from("./ark-data"))
         });
 
-        let bind_addr: SocketAddr = self.bind.parse().unwrap_or_else(|_| "0.0.0.0:8443".parse().unwrap());
+        let bind_addr: SocketAddr = self
+            .bind
+            .parse()
+            .unwrap_or_else(|_| "0.0.0.0:8443".parse().unwrap());
 
         let builder = NodeRuntimeBuilder::new()
             .bind_addr(bind_addr)
@@ -136,9 +139,9 @@ pub async fn execute() -> anyhow::Result<()> {
             println!("Sender Key ID (16B): {:02x?}", identity.sender_key_id);
 
             if let Some(out_path) = out {
-                identity
-                    .save_to_file(out_path)
-                    .map_err(|e| anyhow::anyhow!("Failed to save keypair to {:?}: {}", out_path, e))?;
+                identity.save_to_file(out_path).map_err(|e| {
+                    anyhow::anyhow!("Failed to save keypair to {:?}: {}", out_path, e)
+                })?;
                 println!("Saved identity key material to: {:?}", out_path);
             }
         }
@@ -146,14 +149,18 @@ pub async fn execute() -> anyhow::Result<()> {
             println!("Protocol: v1");
             println!("Magic: 0x{:08X}", ark_core::constants::MAGIC_VALUE);
             println!("Safe MTU: {}", ark_core::constants::SAFE_MTU);
-            let alpn_str = std::str::from_utf8(ark_core::constants::ALPN_ARK_PQC_V1).unwrap_or("ark-pqc/v1");
+            let alpn_str =
+                std::str::from_utf8(ark_core::constants::ALPN_ARK_PQC_V1).unwrap_or("ark-pqc/v1");
             println!("ALPN: {}", alpn_str);
         }
         Some(Commands::Ping { target }) => {
             info!("Probing target peer {} under ALPN ark-pqc/v1...", target);
             match ping_peer(target).await {
                 Ok(rtt) => {
-                    println!("Ping to {} succeeded (ALPN: ark-pqc/v1) RTT: {:.2?}", target, rtt);
+                    println!(
+                        "Ping to {} succeeded (ALPN: ark-pqc/v1) RTT: {:.2?}",
+                        target, rtt
+                    );
                 }
                 Err(e) => {
                     eprintln!("Ping to {} failed: {}", target, e);
@@ -163,10 +170,15 @@ pub async fn execute() -> anyhow::Result<()> {
         }
         None => {
             let builder = cli.build_runtime()?;
-            let handle: NodeHandle = builder.spawn().await
+            let handle: NodeHandle = builder
+                .spawn()
+                .await
                 .map_err(|e| anyhow::anyhow!("Failed to spawn NodeRuntime: {:?}", e))?;
 
-            info!("NodeRuntime active and listening on {}", handle.local_addr());
+            info!(
+                "NodeRuntime active and listening on {}",
+                handle.local_addr()
+            );
 
             // Signal handler for SIGINT / SIGTERM
             tokio::select! {
@@ -175,7 +187,9 @@ pub async fn execute() -> anyhow::Result<()> {
                 }
             }
 
-            handle.shutdown().await
+            handle
+                .shutdown()
+                .await
                 .map_err(|e| anyhow::anyhow!("Error during graceful shutdown: {:?}", e))?;
             info!("Node shutdown cleanly.");
         }

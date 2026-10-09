@@ -6,12 +6,12 @@
 //! - Validates and extracts `TAG_PARAM_D` (FQDN, 0x0004), `TAG_DNS_LEASE_EPOCH` (0x001B), and `TAG_L2_CONTRACT` (0x000F).
 //! - Enforces pluggable `L2ContractVerifier` escrow verification.
 
-use std::sync::Arc;
-use subtle::ConstantTimeEq;
+use crate::error::{DnsError, Result};
 use ark_core::FastHeader;
 use ark_protocol::envelope::ArkEnvelope;
 use ark_storage::compute_envelope_id;
-use crate::error::{DnsError, Result};
+use std::sync::Arc;
+use subtle::ConstantTimeEq;
 
 /// Canonical envelope kind for public sovereign DNS claims (Retention Class 3).
 pub const KIND_DNS_CLAIM_PUBLIC: u32 = 0x3000_0002;
@@ -42,7 +42,6 @@ impl<T: L2ContractVerifier + ?Sized> L2ContractVerifier for &T {
         (**self).verify_escrow_contract(contract_id, owner_key_id)
     }
 }
-
 
 /// Validated Human-Readable Public DNS claim metadata.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -154,7 +153,9 @@ pub fn validate_dns_claim<V: L2ContractVerifier + ?Sized>(
 ) -> Result<ValidatedDnsClaim> {
     // 1. Validate envelope wire format and header
     if envelope.magic != ark_core::constants::MAGIC_BYTES && envelope.magic != b"ARK1" {
-        return Err(DnsError::InvalidRecord("Invalid envelope magic bytes".to_string()));
+        return Err(DnsError::InvalidRecord(
+            "Invalid envelope magic bytes".to_string(),
+        ));
     }
 
     let fast_header = if envelope.fast_header.len() >= 64 {
@@ -164,7 +165,9 @@ pub fn validate_dns_claim<V: L2ContractVerifier + ?Sized>(
         FastHeader::from_bytes(&bytes)
             .map_err(|e| DnsError::InvalidRecord(format!("Invalid fast_header: {}", e)))?
     } else {
-        return Err(DnsError::InvalidRecord("Corrupt fast_header length < 64 bytes".to_string()));
+        return Err(DnsError::InvalidRecord(
+            "Corrupt fast_header length < 64 bytes".to_string(),
+        ));
     };
 
     // Verify kind matches KIND_DNS_CLAIM_PUBLIC (0x3000_0002)
@@ -219,7 +222,9 @@ pub fn validate_dns_claim<V: L2ContractVerifier + ?Sized>(
         .ok_or(DnsError::MissingTag(TAG_L2_CONTRACT))?;
 
     if l2_tag.tag_value.is_empty() {
-        return Err(DnsError::InvalidRecord("Empty TAG_L2_CONTRACT value".to_string()));
+        return Err(DnsError::InvalidRecord(
+            "Empty TAG_L2_CONTRACT value".to_string(),
+        ));
     }
 
     // 3. Extract and validate TAG_PARAM_D (FQDN)
@@ -262,7 +267,9 @@ pub fn validate_dns_claim<V: L2ContractVerifier + ?Sized>(
         .ok_or(DnsError::MissingTag(TAG_L2_CONTRACT))?;
 
     if l2_tag.tag_value.is_empty() {
-        return Err(DnsError::InvalidRecord("Empty TAG_L2_CONTRACT value".to_string()));
+        return Err(DnsError::InvalidRecord(
+            "Empty TAG_L2_CONTRACT value".to_string(),
+        ));
     }
 
     // 6. Validate L2 escrow contract via L2ContractVerifier
@@ -279,7 +286,10 @@ pub fn validate_dns_claim<V: L2ContractVerifier + ?Sized>(
     // 7. Verify cryptographic signature if envelope contains a public key or signature
     // Check if a full FN-DSA-512 public key is carried in TAG_PARAM_D/TAG_PUBLIC_KEY (e.g. tag 0x0002)
     // or if the envelope signature is present and can be verified against a key matching owner_key_id.
-    let pubkey_tag = envelope.tags.iter().find(|t| t.tag_type == 0x0002 || t.tag_type == 0x0001);
+    let pubkey_tag = envelope
+        .tags
+        .iter()
+        .find(|t| t.tag_type == 0x0002 || t.tag_type == 0x0001);
     if let Some(pk_tag) = pubkey_tag {
         if !envelope.signature.is_empty() {
             // Check that pubkey hash matches owner_key_id (first 16 bytes of SHA3-256(pubkey))
@@ -291,8 +301,14 @@ pub fn validate_dns_claim<V: L2ContractVerifier + ?Sized>(
             }
 
             let canonical_id = ark_protocol::hashing::calculate_canonical_id(envelope);
-            ark_crypto::fn_dsa::verify_fn_dsa_512(&pk_tag.tag_value, &canonical_id, &envelope.signature)
-                .map_err(|e| DnsError::InvalidSignature(format!("FN-DSA-512 signature check failed: {}", e)))?;
+            ark_crypto::fn_dsa::verify_fn_dsa_512(
+                &pk_tag.tag_value,
+                &canonical_id,
+                &envelope.signature,
+            )
+            .map_err(|e| {
+                DnsError::InvalidSignature(format!("FN-DSA-512 signature check failed: {}", e))
+            })?;
         }
     }
 

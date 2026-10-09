@@ -27,35 +27,28 @@ fn test_resolve_identity_precedence() {
         Some(&cli_path),
         Some(env_path.to_str().unwrap()),
         Some(&home_path),
-    ).expect("Resolution failed");
+    )
+    .expect("Resolution failed");
     assert_eq!(res_cli.ark_id, cli_id.ark_id);
     assert_eq!(src_cli, ResolvedIdentitySource::Cli);
 
     // 2. No CLI flag, but env var specified -> returns Env identity
-    let (res_env, src_env) = resolve_identity(
-        None,
-        Some(env_path.to_str().unwrap()),
-        Some(&home_path),
-    ).expect("Resolution failed");
+    let (res_env, src_env) =
+        resolve_identity(None, Some(env_path.to_str().unwrap()), Some(&home_path))
+            .expect("Resolution failed");
     assert_eq!(res_env.ark_id, env_id.ark_id);
     assert_eq!(src_env, ResolvedIdentitySource::Env);
 
     // 3. Neither CLI nor env, but ~/.ark/identity.key exists -> returns DefaultHome identity
-    let (res_home, src_home) = resolve_identity(
-        None,
-        None,
-        Some(&home_path),
-    ).expect("Resolution failed");
+    let (res_home, src_home) =
+        resolve_identity(None, None, Some(&home_path)).expect("Resolution failed");
     assert_eq!(res_home.ark_id, home_id.ark_id);
     assert_eq!(src_home, ResolvedIdentitySource::DefaultHome);
 
     // 4. Default home file does not exist -> returns Ephemeral identity
     let missing_home_path = temp_dir.join("nonexistent.key");
-    let (res_ephemeral, src_ephemeral) = resolve_identity(
-        None,
-        None,
-        Some(&missing_home_path),
-    ).expect("Resolution failed");
+    let (res_ephemeral, src_ephemeral) =
+        resolve_identity(None, None, Some(&missing_home_path)).expect("Resolution failed");
     assert_eq!(src_ephemeral, ResolvedIdentitySource::Ephemeral);
     assert_ne!(res_ephemeral.ark_id, [0u8; 32]);
 

@@ -2,7 +2,9 @@ use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum VpnError {
-    #[error("MTU limit exceeded: packet size {size} bytes exceeds configured safe MTU {limit} bytes")]
+    #[error(
+        "MTU limit exceeded: packet size {size} bytes exceeds configured safe MTU {limit} bytes"
+    )]
     MtuExceeded { size: usize, limit: usize },
 
     #[error("Invalid IP packet: {0}")]

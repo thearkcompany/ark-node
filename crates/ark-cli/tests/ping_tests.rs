@@ -5,7 +5,8 @@ use std::net::SocketAddr;
 #[tokio::test]
 async fn test_ping_peer_success() {
     let server_addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
-    let server = ArkQuicEndpoint::new_server_self_signed(server_addr).expect("Failed to start server");
+    let server =
+        ArkQuicEndpoint::new_server_self_signed(server_addr).expect("Failed to start server");
     let bound_addr = server.endpoint.local_addr().unwrap();
 
     let server_handle = tokio::spawn(async move {
@@ -23,7 +24,9 @@ async fn test_ping_peer_success() {
         }
     });
 
-    let rtt = ping_peer(bound_addr.to_string().as_str()).await.expect("Ping failed");
+    let rtt = ping_peer(bound_addr.to_string().as_str())
+        .await
+        .expect("Ping failed");
     assert!(rtt.as_millis() < 5000);
 
     let _ = server_handle.await;

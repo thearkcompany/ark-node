@@ -8,12 +8,8 @@ use tempfile::tempdir;
 
 fn create_ttl_envelope(expiration_ts: u64, payload: &[u8]) -> ArkEnvelope {
     let header = ark_core::fast_header::FastHeader::new(
-        0,
-        100,
-        1000, // base kind
-        [1u8; 16],
-        [2u8; 16],
-        1,
+        0, 100, 1000, // base kind
+        [1u8; 16], [2u8; 16], 1,
     );
     let fast_header = header.to_bytes().to_vec();
 
@@ -48,12 +44,16 @@ fn test_class4_bounded_ttl_lazy_expiration() {
     assert_eq!(out, RetentionOutcome::Stored);
 
     // Read before expiration -> should be found
-    let res_before = engine.get_envelope_at_time(&id, 1_999_999_999).expect("get");
+    let res_before = engine
+        .get_envelope_at_time(&id, 1_999_999_999)
+        .expect("get");
     assert!(res_before.is_some());
     assert_eq!(res_before.unwrap().payload, b"ttl cached item");
 
     // Read at or after expiration -> lazy expiration returns None
-    let res_after = engine.get_envelope_at_time(&id, 2_000_000_000).expect("get");
+    let res_after = engine
+        .get_envelope_at_time(&id, 2_000_000_000)
+        .expect("get");
     assert!(res_after.is_none());
 }
 

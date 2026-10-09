@@ -78,8 +78,8 @@ fn test_cron_trigger_evaluation_on_tick() {
 
     // Schedule: every 5 minutes ("*/5 * * * *")
     let schedule = CronSchedule::parse("*/5 * * * *").unwrap();
-    let job = CronJob::new("heartbeat", schedule, b"ping".to_vec())
-        .with_last_executed(initial_time);
+    let job =
+        CronJob::new("heartbeat", schedule, b"ping".to_vec()).with_last_executed(initial_time);
     cron.add_job(job);
 
     // Advance by 1 minute: 12:01 (no trigger)
@@ -92,11 +92,17 @@ fn test_cron_trigger_evaluation_on_tick() {
     clock.advance(240);
     let enqueued = cron.tick(&queue).unwrap();
     assert_eq!(enqueued.len(), 1);
-    assert_eq!(enqueued[0], format!("cron-heartbeat-{}", initial_time + 300));
+    assert_eq!(
+        enqueued[0],
+        format!("cron-heartbeat-{}", initial_time + 300)
+    );
 
     // Verify task is ready in ArkQueue
     let lease = queue.dispatch().unwrap().expect("Job should be dispatched");
-    assert_eq!(lease.task().id, format!("cron-heartbeat-{}", initial_time + 300));
+    assert_eq!(
+        lease.task().id,
+        format!("cron-heartbeat-{}", initial_time + 300)
+    );
     assert_eq!(lease.task().payload, b"ping");
     queue.complete(&lease).unwrap();
 }
@@ -135,18 +141,27 @@ fn test_strict_skip_missed_intervals_policy_avoids_catchup_storm() {
 
     // The single latest execution should be at the 24h boundary (1791331200 + 86400)
     let expected_latest_trigger = initial_time + offline_duration;
-    assert_eq!(enqueued[0], format!("cron-periodic-sync-{}", expected_latest_trigger));
+    assert_eq!(
+        enqueued[0],
+        format!("cron-periodic-sync-{}", expected_latest_trigger)
+    );
 
     // Verify ArkQueue contains ONLY 1 dispatched item
     let first_dispatch = queue.dispatch().unwrap();
     assert!(first_dispatch.is_some());
     let lease = first_dispatch.unwrap();
-    assert_eq!(lease.task().id, format!("cron-periodic-sync-{}", expected_latest_trigger));
+    assert_eq!(
+        lease.task().id,
+        format!("cron-periodic-sync-{}", expected_latest_trigger)
+    );
     queue.complete(&lease).unwrap();
 
     // Verify queue is now empty (no catch-up storm queued!)
     let second_dispatch = queue.dispatch().unwrap();
-    assert!(second_dispatch.is_none(), "Queue must have no trailing tasks from catch-up storm");
+    assert!(
+        second_dispatch.is_none(),
+        "Queue must have no trailing tasks from catch-up storm"
+    );
 
     // Tick again at the same timestamp: should produce 0 new tasks
     let subsequent_enqueued = cron.tick(&queue).unwrap();

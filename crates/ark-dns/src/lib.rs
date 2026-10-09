@@ -10,8 +10,8 @@ pub mod synthesis;
 pub mod trie;
 pub mod wire;
 
-use std::sync::Arc;
 use arc_swap::ArcSwap;
+use std::sync::Arc;
 
 pub use anti_sybil::{
     count_leading_zero_bits, has_16_leading_zero_bits, validate_dns_claim, validate_fqdn,

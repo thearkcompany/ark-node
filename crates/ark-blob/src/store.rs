@@ -137,7 +137,12 @@ impl HybridBlobStore {
 
     /// Deletes a manifest from the Fjall index.
     pub fn delete_manifest(&self, blob_cid: &[u8; 32]) -> Result<bool> {
-        if self.manifests_keyspace.get(blob_cid).map_err(|e| BlobError::Storage(e.to_string()))?.is_some() {
+        if self
+            .manifests_keyspace
+            .get(blob_cid)
+            .map_err(|e| BlobError::Storage(e.to_string()))?
+            .is_some()
+        {
             self.manifests_keyspace
                 .remove(blob_cid)
                 .map_err(|e| BlobError::Storage(e.to_string()))?;
@@ -208,7 +213,9 @@ impl HybridBlobStore {
         let prefix = blob_cid;
 
         for guard in self.shards_keyspace.prefix(prefix) {
-            let (k, v) = guard.into_inner().map_err(|e| BlobError::Storage(e.to_string()))?;
+            let (k, v) = guard
+                .into_inner()
+                .map_err(|e| BlobError::Storage(e.to_string()))?;
             if k.len() == 36 && &k[..32] == blob_cid {
                 let shard_index = u32::from_be_bytes(k[32..36].try_into().unwrap());
                 if !v.is_empty() {

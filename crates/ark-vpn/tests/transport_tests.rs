@@ -1,13 +1,15 @@
+use ark_vpn::engine::{OutboundPacket, RouteMode};
+use ark_vpn::error::VpnError;
+use ark_vpn::transport::{ChannelTransportSink, VpnTransportSink};
 use std::sync::Arc;
 use tokio::time::Duration;
-use ark_vpn::engine::{OutboundPacket, RouteMode};
-use ark_vpn::transport::{ChannelTransportSink, VpnTransportSink};
-use ark_vpn::error::VpnError;
 
 #[tokio::test]
 async fn test_channel_transport_sink_send_and_receive() {
     let sink = ChannelTransportSink::new(10);
-    let mut rx = sink.take_receiver().expect("take_receiver should return Some on first call");
+    let mut rx = sink
+        .take_receiver()
+        .expect("take_receiver should return Some on first call");
 
     let packet = OutboundPacket {
         recipient_id: [1u8; 32],
@@ -16,7 +18,9 @@ async fn test_channel_transport_sink_send_and_receive() {
         payload: vec![1, 2, 3, 4],
     };
 
-    sink.send_packet(packet.clone()).await.expect("send should succeed");
+    sink.send_packet(packet.clone())
+        .await
+        .expect("send should succeed");
 
     let received = tokio::time::timeout(Duration::from_millis(100), rx.recv())
         .await
@@ -60,16 +64,18 @@ async fn test_channel_transport_sink_trait_object() {
         payload: vec![9, 9, 9],
     };
 
-    sink.send_packet(packet).await.expect("send via trait object");
+    sink.send_packet(packet)
+        .await
+        .expect("send via trait object");
 }
 
 #[tokio::test]
 async fn test_pipeline_outbound_transmission_and_drop_metrics() {
     use ark_crypto::identity::PersistentIdentity;
-    use ark_vpn::engine::{VpnEngine, VpnEngineConfig};
-    use ark_vpn::tun::MockTunAdapter;
     use ark_vpn::acl::{IpProtocol, VpnAction, VpnSecurityPolicy};
+    use ark_vpn::engine::{VpnEngine, VpnEngineConfig};
     use ark_vpn::pqmt::VpnSession;
+    use ark_vpn::tun::MockTunAdapter;
     use ark_vpn::DeterministicIpam;
     use rand_chacha::rand_core::SeedableRng;
 
@@ -92,7 +98,10 @@ async fn test_pipeline_outbound_transmission_and_drop_metrics() {
 
     // Register peer and session
     let peer_endpoint = "192.168.1.100:51820".parse().unwrap();
-    engine.add_peer(peer_ark_id, peer_endpoint, None).await.unwrap();
+    engine
+        .add_peer(peer_ark_id, peer_endpoint, None)
+        .await
+        .unwrap();
 
     let session = VpnSession {
         session_id: 101,
@@ -103,15 +112,19 @@ async fn test_pipeline_outbound_transmission_and_drop_metrics() {
         recv_seq: 0,
     };
     engine.pqmt().insert_session(session.clone());
-    engine.roaming().insert_session(session, peer_endpoint, None, 1000);
+    engine
+        .roaming()
+        .insert_session(session, peer_endpoint, None, 1000);
 
     // Allow ACL
-    engine.apply_policy(VpnSecurityPolicy {
-        source_ark_id: None,
-        destination_port: None,
-        protocol: IpProtocol::Any,
-        action: VpnAction::Allow,
-    }).unwrap();
+    engine
+        .apply_policy(VpnSecurityPolicy {
+            source_ark_id: None,
+            destination_port: None,
+            protocol: IpProtocol::Any,
+            action: VpnAction::Allow,
+        })
+        .unwrap();
 
     // Start engine and spawn pipeline
     engine.start().await.unwrap();
@@ -156,10 +169,10 @@ async fn test_pipeline_outbound_transmission_and_drop_metrics() {
 #[tokio::test]
 async fn test_pipeline_outbound_relay_routing_and_sink_drop_metrics() {
     use ark_crypto::identity::PersistentIdentity;
-    use ark_vpn::engine::{VpnEngine, VpnEngineConfig};
-    use ark_vpn::tun::MockTunAdapter;
     use ark_vpn::acl::{IpProtocol, VpnAction, VpnSecurityPolicy};
+    use ark_vpn::engine::{VpnEngine, VpnEngineConfig};
     use ark_vpn::pqmt::VpnSession;
+    use ark_vpn::tun::MockTunAdapter;
     use ark_vpn::DeterministicIpam;
     use rand_chacha::rand_core::SeedableRng;
 
@@ -185,11 +198,17 @@ async fn test_pipeline_outbound_relay_routing_and_sink_drop_metrics() {
     let relay_endpoint = "10.0.0.1:7777".parse().unwrap();
     let relay_id = [0x55u8; 32];
     engine.add_relay(relay_id, relay_endpoint);
-    engine.add_peer(peer_ark_id, peer_endpoint, None).await.unwrap();
+    engine
+        .add_peer(peer_ark_id, peer_endpoint, None)
+        .await
+        .unwrap();
 
     // Trigger relay failover
     engine.simulate_p2p_failure(&peer_ark_id);
-    assert_eq!(engine.get_route_mode(&peer_ark_id), Some(RouteMode::Relayed));
+    assert_eq!(
+        engine.get_route_mode(&peer_ark_id),
+        Some(RouteMode::Relayed)
+    );
 
     let session = VpnSession {
         session_id: 102,
@@ -200,14 +219,18 @@ async fn test_pipeline_outbound_relay_routing_and_sink_drop_metrics() {
         recv_seq: 0,
     };
     engine.pqmt().insert_session(session.clone());
-    engine.roaming().insert_session(session, peer_endpoint, None, 1000);
+    engine
+        .roaming()
+        .insert_session(session, peer_endpoint, None, 1000);
 
-    engine.apply_policy(VpnSecurityPolicy {
-        source_ark_id: None,
-        destination_port: None,
-        protocol: IpProtocol::Any,
-        action: VpnAction::Allow,
-    }).unwrap();
+    engine
+        .apply_policy(VpnSecurityPolicy {
+            source_ark_id: None,
+            destination_port: None,
+            protocol: IpProtocol::Any,
+            action: VpnAction::Allow,
+        })
+        .unwrap();
 
     engine.start().await.unwrap();
     let handle = engine.spawn_packet_pipeline();
@@ -256,10 +279,10 @@ async fn test_pipeline_outbound_relay_routing_and_sink_drop_metrics() {
 #[tokio::test]
 async fn test_unified_duplex_lifecycle_supervision_start_and_stop() {
     use ark_crypto::identity::PersistentIdentity;
-    use ark_vpn::engine::{VpnEngine, VpnEngineConfig, VpnEngineStatus};
-    use ark_vpn::tun::MockTunAdapter;
     use ark_vpn::acl::{IpProtocol, VpnAction, VpnSecurityPolicy};
+    use ark_vpn::engine::{VpnEngine, VpnEngineConfig, VpnEngineStatus};
     use ark_vpn::pqmt::VpnSession;
+    use ark_vpn::tun::MockTunAdapter;
     use ark_vpn::DeterministicIpam;
     use rand_chacha::rand_core::SeedableRng;
 
@@ -284,7 +307,10 @@ async fn test_unified_duplex_lifecycle_supervision_start_and_stop() {
     assert_eq!(engine.status(), VpnEngineStatus::Stopped);
 
     let peer_endpoint = "192.168.1.100:51820".parse().unwrap();
-    engine.add_peer(peer_ark_id, peer_endpoint, None).await.unwrap();
+    engine
+        .add_peer(peer_ark_id, peer_endpoint, None)
+        .await
+        .unwrap();
 
     let session = VpnSession {
         session_id: 200,
@@ -295,14 +321,18 @@ async fn test_unified_duplex_lifecycle_supervision_start_and_stop() {
         recv_seq: 0,
     };
     engine.pqmt().insert_session(session.clone());
-    engine.roaming().insert_session(session, peer_endpoint, None, 1000);
+    engine
+        .roaming()
+        .insert_session(session, peer_endpoint, None, 1000);
 
-    engine.apply_policy(VpnSecurityPolicy {
-        source_ark_id: None,
-        destination_port: None,
-        protocol: IpProtocol::Any,
-        action: VpnAction::Allow,
-    }).unwrap();
+    engine
+        .apply_policy(VpnSecurityPolicy {
+            source_ark_id: None,
+            destination_port: None,
+            protocol: IpProtocol::Any,
+            action: VpnAction::Allow,
+        })
+        .unwrap();
 
     // Call start(Arc::clone(&engine)) or start(&self) without manually calling spawn_packet_pipeline!
     engine.start().await.unwrap();

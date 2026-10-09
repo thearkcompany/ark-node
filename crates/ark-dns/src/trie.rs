@@ -6,9 +6,9 @@
 //! - Deterministic SHA3-256 Merkle root hash computation over compacted prefix paths.
 //! - Compact Merkle inclusion proof generation and verification (<= 256 bytes).
 
-use std::sync::Arc;
-use sha3::{Digest, Sha3_256};
 use crate::record::DomainRoutingRecord;
+use sha3::{Digest, Sha3_256};
+use std::sync::Arc;
 
 /// Maximum size in bytes for a serialized Merkle inclusion proof.
 pub const MAX_MERKLE_PROOF_SIZE: usize = 256;
@@ -46,7 +46,11 @@ impl MerkleProof {
         for step in &self.path_steps {
             size += 2 + step.prefix.len();
             size += 1 + step.sibling_hashes.len() * 32;
-            size += 1 + if step.node_val_digest.is_some() { 32 } else { 0 };
+            size += 1 + if step.node_val_digest.is_some() {
+                32
+            } else {
+                0
+            };
         }
         size
     }
@@ -97,7 +101,9 @@ impl MerkleProof {
         if bytes.len() < offset + fqdn_len + 32 + 2 {
             return None;
         }
-        let fqdn = std::str::from_utf8(&bytes[offset..offset + fqdn_len]).ok()?.to_string();
+        let fqdn = std::str::from_utf8(&bytes[offset..offset + fqdn_len])
+            .ok()?
+            .to_string();
         offset += fqdn_len;
         let mut record_digest = [0u8; 32];
         record_digest.copy_from_slice(&bytes[offset..offset + 32]);
@@ -189,7 +195,8 @@ impl MerkleProof {
             }
 
             // Sibling hashes + current_child_hash combined
-            let total_children = step.sibling_hashes.len() + if current_child_hash.is_some() { 1 } else { 0 };
+            let total_children =
+                step.sibling_hashes.len() + if current_child_hash.is_some() { 1 } else { 0 };
             hasher.update((total_children as u16).to_be_bytes());
 
             let mut all_child_hashes = step.sibling_hashes.clone();
@@ -228,7 +235,11 @@ pub(crate) struct TrieNode {
 }
 
 impl TrieNode {
-    fn new(prefix: Vec<u8>, value: Option<Arc<DomainRoutingRecord>>, children: Vec<(u8, Arc<TrieNode>)>) -> Self {
+    fn new(
+        prefix: Vec<u8>,
+        value: Option<Arc<DomainRoutingRecord>>,
+        children: Vec<(u8, Arc<TrieNode>)>,
+    ) -> Self {
         let mut node = Self {
             prefix,
             value,
@@ -256,7 +267,8 @@ impl TrieNode {
             }
         }
 
-        let mut child_hashes: Vec<[u8; 32]> = self.children.iter().map(|(_, c)| c.cached_hash).collect();
+        let mut child_hashes: Vec<[u8; 32]> =
+            self.children.iter().map(|(_, c)| c.cached_hash).collect();
         child_hashes.sort();
 
         hasher.update((child_hashes.len() as u16).to_be_bytes());
@@ -353,7 +365,11 @@ impl CompressedPatriciaTrie {
 
         Self {
             root: Some(new_root),
-            count: if inserted_new { self.count + 1 } else { self.count },
+            count: if inserted_new {
+                self.count + 1
+            } else {
+                self.count
+            },
         }
     }
 
@@ -385,7 +401,8 @@ impl CompressedPatriciaTrie {
             let mut new_children = node.children.clone();
 
             if let Some(pos) = new_children.iter().position(|(b, _)| *b == branch_byte) {
-                let updated_child = Self::insert_node(&new_children[pos].1, rem_key, record, inserted_new);
+                let updated_child =
+                    Self::insert_node(&new_children[pos].1, rem_key, record, inserted_new);
                 new_children[pos] = (branch_byte, updated_child);
             } else {
                 *inserted_new = true;
@@ -394,7 +411,11 @@ impl CompressedPatriciaTrie {
                 new_children.sort_by_key(|(b, _)| *b);
             }
 
-            return Arc::new(TrieNode::new(node.prefix.clone(), node.value.clone(), new_children));
+            return Arc::new(TrieNode::new(
+                node.prefix.clone(),
+                node.value.clone(),
+                new_children,
+            ));
         }
 
         // Case 2: Node prefix needs to be split
@@ -553,7 +574,11 @@ impl CompressedPatriciaTrie {
             if key_rem.is_empty() {
                 let rec = current.value.as_ref()?;
                 // Leaf step reached
-                let sibling_hashes: Vec<[u8; 32]> = current.children.iter().map(|(_, c)| c.cached_hash).collect();
+                let sibling_hashes: Vec<[u8; 32]> = current
+                    .children
+                    .iter()
+                    .map(|(_, c)| c.cached_hash)
+                    .collect();
                 path_steps.push(MerkleProofStep {
                     prefix: current.prefix.clone(),
                     sibling_hashes,
@@ -563,7 +588,10 @@ impl CompressedPatriciaTrie {
             }
 
             let first_byte = key_rem[0];
-            let child_pos = current.children.iter().position(|(b, _)| *b == first_byte)?;
+            let child_pos = current
+                .children
+                .iter()
+                .position(|(b, _)| *b == first_byte)?;
             let child = &current.children[child_pos].1;
 
             // Collect sibling hashes of all other children

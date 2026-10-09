@@ -2,8 +2,8 @@
 //! ArkID = SHA3-256(PublicKey)
 //! SenderKeyID = First 16 bytes of ArkID
 
-use sha3::{Digest, Sha3_256};
 use ark_core::traits::ArkIdentity;
+use sha3::{Digest, Sha3_256};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Identity {
@@ -99,7 +99,12 @@ impl PersistentIdentity {
     /// Serialize identity bytes:
     /// [4B Magic: ARKK][1B Version: 1][897B FN-DSA PK][1281B FN-DSA SK][1184B ML-KEM PK][2400B ML-KEM SK]
     pub fn to_bytes(&self) -> Vec<u8> {
-        let total_size = 4 + 1 + FN_DSA_512_PUBKEY_SIZE + FN_DSA_512_SECKEY_SIZE + ML_KEM_768_PUBKEY_SIZE + ML_KEM_768_SECKEY_SIZE;
+        let total_size = 4
+            + 1
+            + FN_DSA_512_PUBKEY_SIZE
+            + FN_DSA_512_SECKEY_SIZE
+            + ML_KEM_768_PUBKEY_SIZE
+            + ML_KEM_768_SECKEY_SIZE;
         let mut buf = Vec::with_capacity(total_size);
         buf.extend_from_slice(&PERSISTENT_IDENTITY_MAGIC);
         buf.push(1); // format version
@@ -112,7 +117,12 @@ impl PersistentIdentity {
 
     /// Deserialize identity from raw bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        let expected_size = 4 + 1 + FN_DSA_512_PUBKEY_SIZE + FN_DSA_512_SECKEY_SIZE + ML_KEM_768_PUBKEY_SIZE + ML_KEM_768_SECKEY_SIZE;
+        let expected_size = 4
+            + 1
+            + FN_DSA_512_PUBKEY_SIZE
+            + FN_DSA_512_SECKEY_SIZE
+            + ML_KEM_768_PUBKEY_SIZE
+            + ML_KEM_768_SECKEY_SIZE;
         if bytes.len() != expected_size {
             return Err(ArkError::CryptoError(format!(
                 "Invalid identity file size: expected {} bytes, got {}",
@@ -122,12 +132,17 @@ impl PersistentIdentity {
         }
 
         if bytes[0..4] != PERSISTENT_IDENTITY_MAGIC {
-            return Err(ArkError::CryptoError("Invalid identity key magic bytes".into()));
+            return Err(ArkError::CryptoError(
+                "Invalid identity key magic bytes".into(),
+            ));
         }
 
         let version = bytes[4];
         if version != 1 {
-            return Err(ArkError::CryptoError(format!("Unsupported identity key version: {}", version)));
+            return Err(ArkError::CryptoError(format!(
+                "Unsupported identity key version: {}",
+                version
+            )));
         }
 
         let mut offset = 5;
@@ -223,4 +238,3 @@ impl ArkIdentity for PersistentIdentity {
         self.sender_key_id
     }
 }
-

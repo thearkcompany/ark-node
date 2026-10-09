@@ -9,8 +9,8 @@
 //! - Expired: If 72 hours elapse without Homelab confirmation (or L2 renewal), staged data shards
 //!   expire and are pruned by automatic garbage collection.
 
-use std::fmt;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 use crate::constants::{
     KIND_HOMELAB_ACK, STAGED_CUSTODY_TTL_SECS, STAGED_MAX_FILE_SIZE, TAG_CONTENT_CID,
@@ -232,8 +232,11 @@ impl<'a> CustodyStateMachine<'a> {
                     for idx in 0..manifest.data_shards.min(manifest.shard_hashes.len()) {
                         let shard_hash = &manifest.shard_hashes[idx];
                         let _ = self.store.remove_shard(shard_hash);
-                        self.store
-                            .update_shard_status(&blob_cid, idx as u32, ShardStatus::Purged)?;
+                        self.store.update_shard_status(
+                            &blob_cid,
+                            idx as u32,
+                            ShardStatus::Purged,
+                        )?;
                     }
                 }
 
@@ -269,7 +272,10 @@ impl<'a> CustodyStateMachine<'a> {
             .storage()
             .open_keyspace(Self::KEYSPACE_CUSTODY)
             .map_err(|e| BlobError::Storage(e.to_string()))?;
-        match keyspace.get(blob_cid).map_err(|e| BlobError::Storage(e.to_string()))? {
+        match keyspace
+            .get(blob_cid)
+            .map_err(|e| BlobError::Storage(e.to_string()))?
+        {
             Some(bytes) => {
                 let rec = CustodyRecord::from_bytes(&bytes)?;
                 Ok(Some(rec))
@@ -287,7 +293,9 @@ impl<'a> CustodyStateMachine<'a> {
 
         let mut records = Vec::new();
         for guard in keyspace.iter() {
-            let (_k, v) = guard.into_inner().map_err(|e| BlobError::Storage(e.to_string()))?;
+            let (_k, v) = guard
+                .into_inner()
+                .map_err(|e| BlobError::Storage(e.to_string()))?;
             let rec = CustodyRecord::from_bytes(&v)?;
             records.push(rec);
         }
@@ -317,7 +325,9 @@ fn get_envelope_kind(envelope: &ArkEnvelope) -> Result<u32> {
         }
     }
 
-    Err(BlobError::InvalidEnvelope("Could not determine envelope kind".into()))
+    Err(BlobError::InvalidEnvelope(
+        "Could not determine envelope kind".into(),
+    ))
 }
 
 /// Helper to extract `TAG_CONTENT_CID` (0x0002) from envelope tags.
@@ -327,7 +337,10 @@ fn extract_blob_cid_tag(envelope: &ArkEnvelope) -> Result<[u8; 32]> {
         .iter()
         .find(|t| t.tag_type == TAG_CONTENT_CID)
         .ok_or_else(|| {
-            BlobError::InvalidEnvelope(format!("Missing TAG_CONTENT_CID (0x{:04X})", TAG_CONTENT_CID))
+            BlobError::InvalidEnvelope(format!(
+                "Missing TAG_CONTENT_CID (0x{:04X})",
+                TAG_CONTENT_CID
+            ))
         })?;
 
     if tag.tag_value.len() != 32 {
@@ -348,7 +361,9 @@ fn verify_envelope_fn_dsa_signature(
     expected_pk: Option<&[u8]>,
 ) -> Result<()> {
     if envelope.signature.is_empty() {
-        return Err(BlobError::InvalidSignature("Envelope signature is missing".into()));
+        return Err(BlobError::InvalidSignature(
+            "Envelope signature is missing".into(),
+        ));
     }
 
     // Public key can be supplied explicitly or carried in tag 0x0001 / 0x0002
@@ -366,6 +381,7 @@ fn verify_envelope_fn_dsa_signature(
     let canonical_id = ark_protocol::hashing::calculate_canonical_id(envelope);
 
     // Verify FN-DSA-512 signature
-    ark_crypto::fn_dsa::verify_fn_dsa_512(pubkey, &canonical_id, &envelope.signature)
-        .map_err(|e| BlobError::InvalidSignature(format!("FN-DSA signature verification failed: {}", e)))
+    ark_crypto::fn_dsa::verify_fn_dsa_512(pubkey, &canonical_id, &envelope.signature).map_err(|e| {
+        BlobError::InvalidSignature(format!("FN-DSA signature verification failed: {}", e))
+    })
 }

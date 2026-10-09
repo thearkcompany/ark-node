@@ -1,17 +1,17 @@
+use ark_blob::BlobEngine;
+use ark_core::FastHeader;
+use ark_crdt::{MstConfig, MstEngine, KIND_KV_MST_SYNC};
+use ark_dns::SovereignDnsEngine;
+use ark_paas::PaasEngine;
+use ark_protocol::envelope::ArkEnvelope;
+use ark_protocol::wire::WireFrame;
+use ark_storage::{get_envelope_kind, RetentionOutcome, StorageEngine};
+use ark_vpn::VpnEngine;
+use ark_wot::WotEngine;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::debug;
-use ark_core::FastHeader;
-use ark_crdt::{MstConfig, MstEngine, KIND_KV_MST_SYNC};
-use ark_dns::SovereignDnsEngine;
-use ark_blob::BlobEngine;
-use ark_paas::PaasEngine;
-use ark_vpn::VpnEngine;
-use ark_wot::WotEngine;
-use ark_protocol::envelope::ArkEnvelope;
-use ark_protocol::wire::WireFrame;
-use ark_storage::{get_envelope_kind, RetentionOutcome, StorageEngine};
 
 use crate::error::{ArkRuntimeError, Result};
 
@@ -57,8 +57,11 @@ impl EnvelopeDispatcher {
         vpn_engine: Option<Arc<VpnEngine>>,
         wot_engine: Option<Arc<WotEngine>>,
     ) -> Result<Self> {
-        let mst_engine = Arc::new(MstEngine::open(storage.clone(), MstConfig::default())
-            .map_err(|e| ArkRuntimeError::Internal(format!("Failed to open MstEngine: {:?}", e)))?);
+        let mst_engine = Arc::new(
+            MstEngine::open(storage.clone(), MstConfig::default()).map_err(|e| {
+                ArkRuntimeError::Internal(format!("Failed to open MstEngine: {:?}", e))
+            })?,
+        );
         Ok(Self {
             storage,
             mst_engine,
@@ -104,15 +107,22 @@ impl EnvelopeDispatcher {
     }
 
     /// Primary wire processing entrypoint with peer socket address propagation
-    pub fn process_wire_frame_from(&self, wire_bytes: &[u8], remote_addr: Option<SocketAddr>) -> Result<DispatchOutcome> {
-        let (header, envelope) = WireFrame::decode(wire_bytes)
-            .map_err(ArkRuntimeError::Core)?;
+    pub fn process_wire_frame_from(
+        &self,
+        wire_bytes: &[u8],
+        remote_addr: Option<SocketAddr>,
+    ) -> Result<DispatchOutcome> {
+        let (header, envelope) = WireFrame::decode(wire_bytes).map_err(ArkRuntimeError::Core)?;
 
         self.dispatch_envelope_from(&header, &envelope, remote_addr)
     }
 
     /// Dispatch decoded envelope based on kind with strict peripheral fault isolation
-    pub fn dispatch_envelope(&self, header: &FastHeader, envelope: &ArkEnvelope) -> Result<DispatchOutcome> {
+    pub fn dispatch_envelope(
+        &self,
+        header: &FastHeader,
+        envelope: &ArkEnvelope,
+    ) -> Result<DispatchOutcome> {
         self.dispatch_envelope_from(header, envelope, None)
     }
 
@@ -125,7 +135,10 @@ impl EnvelopeDispatcher {
     ) -> Result<DispatchOutcome> {
         let kind = get_envelope_kind(envelope);
         let fast_tag = header.fast_tag;
-        debug!("Dispatching envelope kind=0x{:08X}, fast_tag=0x{:08X}", kind, fast_tag);
+        debug!(
+            "Dispatching envelope kind=0x{:08X}, fast_tag=0x{:08X}",
+            kind, fast_tag
+        );
 
         // 1. CRDT MST sync
         if kind == KIND_KV_MST_SYNC || fast_tag == KIND_KV_MST_SYNC {
@@ -194,7 +207,7 @@ impl EnvelopeDispatcher {
                         .unwrap_or_default()
                         .as_secs();
                     let packet_timestamp_secs = if envelope.timestamp != 0 {
-                        envelope.timestamp as u64
+                        envelope.timestamp
                     } else {
                         local_secs
                     };

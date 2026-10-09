@@ -1,8 +1,8 @@
 use ark_blob::{
-    derive_sub_block_index, generate_depin_challenge, verify_depin_challenge_response,
-    BlobError, DePINChallenge, DePINChallengeResponse, HybridBlobStore,
-    KIND_DEPIN_CHALLENGE, KIND_DEPIN_RESPONSE, SHARD_SIZE, SUB_BLOCKS_PER_SHARD,
-    SUB_BLOCK_SIZE, TAG_CHALLENGE_SEED, TAG_CONTENT_CID, TAG_SHARD_INDEX, TAG_SUB_BLOCK_INDEX,
+    derive_sub_block_index, generate_depin_challenge, verify_depin_challenge_response, BlobError,
+    DePINChallenge, DePINChallengeResponse, HybridBlobStore, KIND_DEPIN_CHALLENGE,
+    KIND_DEPIN_RESPONSE, SHARD_SIZE, SUB_BLOCKS_PER_SHARD, SUB_BLOCK_SIZE, TAG_CHALLENGE_SEED,
+    TAG_CONTENT_CID, TAG_SHARD_INDEX, TAG_SUB_BLOCK_INDEX,
 };
 use ark_storage::{StorageConfig, StorageEngine};
 use std::sync::Arc;
@@ -24,7 +24,9 @@ fn test_challenge_generation_and_deterministic_sample() {
 
     // Envelope serialization check
     let sender_id = [0x01u8; 32];
-    let env = challenge.to_envelope(&sender_id).expect("envelope serialization");
+    let env = challenge
+        .to_envelope(&sender_id)
+        .expect("envelope serialization");
     assert_eq!(env.tags.len(), 4);
 
     let decoded_challenge = DePINChallenge::from_envelope(&env).expect("decode envelope");
@@ -39,7 +41,8 @@ fn test_challenge_generation_and_deterministic_sample() {
     // Test convenience helper generate_depin_challenge
     let helper_env = generate_depin_challenge(blob_cid, shard_idx, seed, None, &sender_id)
         .expect("helper challenge envelope");
-    let decoded_helper = DePINChallenge::from_envelope(&helper_env).expect("decode helper envelope");
+    let decoded_helper =
+        DePINChallenge::from_envelope(&helper_env).expect("decode helper envelope");
     assert_eq!(decoded_helper, sampled_challenge);
 }
 
@@ -77,14 +80,23 @@ fn test_keeper_proof_generation_and_auditor_verification() {
     let shard_root = ark_blob::compute_single_shard_root(&shard).unwrap();
     let is_valid = response.verify(&shard_root, &challenge);
     assert!(is_valid);
-    assert!(verify_depin_challenge_response(&response, &shard_root, &challenge));
+    assert!(verify_depin_challenge_response(
+        &response,
+        &shard_root,
+        &challenge
+    ));
 
     // Response envelope roundtrip
     let sender_id = [0x02u8; 32];
     let resp_env = response.to_envelope(&sender_id).expect("response envelope");
-    let decoded_resp = DePINChallengeResponse::from_envelope(&resp_env).expect("decode response env");
+    let decoded_resp =
+        DePINChallengeResponse::from_envelope(&resp_env).expect("decode response env");
     assert_eq!(decoded_resp, response);
-    assert!(verify_depin_challenge_response(&decoded_resp, &shard_root, &challenge));
+    assert!(verify_depin_challenge_response(
+        &decoded_resp,
+        &shard_root,
+        &challenge
+    ));
 }
 
 #[test]
@@ -102,7 +114,11 @@ fn test_rejection_of_tampered_sub_block() {
     // Tamper with mac response
     response.mac[0] ^= 0xFF;
     assert!(!response.verify(&shard_root, &challenge));
-    assert!(!verify_depin_challenge_response(&response, &shard_root, &challenge));
+    assert!(!verify_depin_challenge_response(
+        &response,
+        &shard_root,
+        &challenge
+    ));
 
     // Tamper with sub_block bytes inside response
     let mut response2 = DePINChallengeResponse::generate(&shard, &challenge).unwrap();
@@ -168,7 +184,11 @@ fn test_verification_performance_microseconds() {
     #[cfg(not(debug_assertions))]
     let max_allowed = 50.0;
 
-    assert!(avg_micros < max_allowed, "Verification too slow: {:.2} µs", avg_micros);
+    assert!(
+        avg_micros < max_allowed,
+        "Verification too slow: {:.2} µs",
+        avg_micros
+    );
 }
 
 #[test]

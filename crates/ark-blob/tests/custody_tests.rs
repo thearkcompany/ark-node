@@ -4,8 +4,8 @@ use std::sync::Arc;
 use tempfile::tempdir;
 
 use ark_blob::constants::{
-    DATA_SHARDS, KIND_HOMELAB_ACK, PARITY_SHARDS, SHARD_SIZE,
-    STAGED_CUSTODY_TTL_SECS, STAGED_MAX_FILE_SIZE, TAG_CONTENT_CID, TOTAL_SHARDS,
+    DATA_SHARDS, KIND_HOMELAB_ACK, PARITY_SHARDS, SHARD_SIZE, STAGED_CUSTODY_TTL_SECS,
+    STAGED_MAX_FILE_SIZE, TAG_CONTENT_CID, TOTAL_SHARDS,
 };
 use ark_blob::custody::{CustodyState, CustodyStateMachine};
 use ark_blob::error::BlobError;
@@ -27,8 +27,7 @@ fn setup_store() -> (tempfile::TempDir, HybridBlobStore) {
     let cas_dir = dir.path().join("cas");
 
     let storage = Arc::new(
-        StorageEngine::open(storage_dir, StorageConfig::frugal())
-            .expect("open storage engine"),
+        StorageEngine::open(storage_dir, StorageConfig::frugal()).expect("open storage engine"),
     );
     let store = HybridBlobStore::new(cas_dir, storage).expect("open hybrid blob store");
     (dir, store)
@@ -130,7 +129,11 @@ fn test_staged_full_custody_entry_under_25mb() {
     for (idx, status) in statuses {
         assert_eq!(status, ShardStatus::Present, "Shard {} not Present", idx);
         let hash = &manifest.shard_hashes[idx as usize];
-        assert!(store.has_shard(hash), "Shard payload {} missing in CAS", idx);
+        assert!(
+            store.has_shard(hash),
+            "Shard payload {} missing in CAS",
+            idx
+        );
     }
 }
 
@@ -253,7 +256,10 @@ fn test_homelab_ack_with_invalid_signature_fails_and_does_not_purge() {
     // Shards must remain untouched
     for idx in 0..DATA_SHARDS {
         let hash = &manifest.shard_hashes[idx];
-        assert!(store.has_shard(hash), "Data shard must NOT be removed on failed signature");
+        assert!(
+            store.has_shard(hash),
+            "Data shard must NOT be removed on failed signature"
+        );
     }
 }
 
@@ -269,7 +275,10 @@ fn test_gc_pruning_after_72_hours_window() {
     // 1. Time at 71 hours: not expired yet
     let t_71h = t0 + (71 * 3600);
     let pruned = csm.prune_expired_staged(t_71h).expect("prune at 71h");
-    assert!(pruned.is_empty(), "Nothing should be pruned before 72 hours");
+    assert!(
+        pruned.is_empty(),
+        "Nothing should be pruned before 72 hours"
+    );
     for idx in 0..DATA_SHARDS {
         assert!(store.has_shard(&manifest.shard_hashes[idx]));
     }
@@ -342,7 +351,11 @@ fn test_safe_ghost_lock_unlocked_by_homelab_ack() {
 
     // Eviction now succeeds
     let res = ghost.check_and_evict(&blob_cid);
-    assert!(res.is_ok(), "Eviction should succeed after Homelab ACK: {:?}", res);
+    assert!(
+        res.is_ok(),
+        "Eviction should succeed after Homelab ACK: {:?}",
+        res
+    );
     assert!(!ghost.is_locked(&blob_cid));
 }
 
@@ -386,5 +399,9 @@ fn test_safe_ghost_lock_unlocked_by_10_por_challenges() {
 
     assert!(!ghost.is_locked(&blob_cid));
     let res = ghost.check_and_evict(&blob_cid);
-    assert!(res.is_ok(), "Eviction should succeed after 10 distinct PoR challenges: {:?}", res);
+    assert!(
+        res.is_ok(),
+        "Eviction should succeed after 10 distinct PoR challenges: {:?}",
+        res
+    );
 }

@@ -175,14 +175,20 @@ async fn test_e2e_full_protocol_stack_verification() {
 
         // Process first transmission: Class 1 (Append-Only)
         {
-            let (mut send, mut recv) = conn.accept_bi().await.expect("Failed to accept bi-stream 1");
+            let (mut send, mut recv) = conn
+                .accept_bi()
+                .await
+                .expect("Failed to accept bi-stream 1");
             let wire_bytes = recv
                 .read_to_end(128 * 1024)
                 .await
                 .expect("Server failed to read wire bytes 1");
 
             // Server validates the 64-byte raw FastHeader directly before Protobuf decoding
-            assert!(wire_bytes.len() >= FAST_HEADER_SIZE, "Frame shorter than 64-byte FastHeader");
+            assert!(
+                wire_bytes.len() >= FAST_HEADER_SIZE,
+                "Frame shorter than 64-byte FastHeader"
+            );
             let raw_header = WireFrame::inspect_header(&wire_bytes)
                 .expect("Direct 64-byte FastHeader inspection failed");
             raw_header.validate().expect("FastHeader validation failed");
@@ -222,13 +228,18 @@ async fn test_e2e_full_protocol_stack_verification() {
                 .expect("store class 1 envelope");
             assert_eq!(outcome, RetentionOutcome::Stored);
 
-            send.write_all(b"OK").await.expect("Server failed to write OK");
+            send.write_all(b"OK")
+                .await
+                .expect("Server failed to write OK");
             send.finish().expect("Server failed to finish stream");
         }
 
         // Process second transmission over QUIC: simulated duplicate packet replay
         {
-            let (mut send, mut recv) = conn.accept_bi().await.expect("Failed to accept bi-stream 2");
+            let (mut send, mut recv) = conn
+                .accept_bi()
+                .await
+                .expect("Failed to accept bi-stream 2");
             let replayed_bytes = recv
                 .read_to_end(128 * 1024)
                 .await
@@ -241,16 +252,24 @@ async fn test_e2e_full_protocol_stack_verification() {
             let replay_res = server_anti_replay.check_and_insert(&nonce_bytes);
             match replay_res {
                 Err(ArkError::ReplayDetected) => {
-                    send.write_all(b"ERR_REPLAY").await.expect("Write replay rejection");
+                    send.write_all(b"ERR_REPLAY")
+                        .await
+                        .expect("Write replay rejection");
                     send.finish().expect("Finish replay stream");
                 }
-                other => panic!("Expected ReplayDetected on duplicate nonce over wire, got {:?}", other),
+                other => panic!(
+                    "Expected ReplayDetected on duplicate nonce over wire, got {:?}",
+                    other
+                ),
             }
         }
 
         // Process third transmission over QUIC: simulated excessive clock drift
         {
-            let (mut send, mut recv) = conn.accept_bi().await.expect("Failed to accept bi-stream 3");
+            let (mut send, mut recv) = conn
+                .accept_bi()
+                .await
+                .expect("Failed to accept bi-stream 3");
             let drifted_bytes = recv
                 .read_to_end(128 * 1024)
                 .await
@@ -262,16 +281,24 @@ async fn test_e2e_full_protocol_stack_verification() {
             let drift_res = DriftValidator::validate_now(decoded_envelope.timestamp);
             match drift_res {
                 Err(ArkError::ClockDriftExceeded(_, 30)) => {
-                    send.write_all(b"ERR_DRIFT").await.expect("Write drift rejection");
+                    send.write_all(b"ERR_DRIFT")
+                        .await
+                        .expect("Write drift rejection");
                     send.finish().expect("Finish drift stream");
                 }
-                other => panic!("Expected ClockDriftExceeded on drifted envelope over wire, got {:?}", other),
+                other => panic!(
+                    "Expected ClockDriftExceeded on drifted envelope over wire, got {:?}",
+                    other
+                ),
             }
         }
 
         // Process fourth transmission: Class 0 Ephemeral RAM-only message
         {
-            let (mut send, mut recv) = conn.accept_bi().await.expect("Failed to accept bi-stream 4");
+            let (mut send, mut recv) = conn
+                .accept_bi()
+                .await
+                .expect("Failed to accept bi-stream 4");
             let eph_bytes = recv
                 .read_to_end(128 * 1024)
                 .await
@@ -296,13 +323,18 @@ async fn test_e2e_full_protocol_stack_verification() {
                 "Ephemeral event must leave zero disk traces"
             );
 
-            send.write_all(b"OK_EPHEMERAL").await.expect("Write ok ephemeral");
+            send.write_all(b"OK_EPHEMERAL")
+                .await
+                .expect("Write ok ephemeral");
             send.finish().expect("Finish stream");
         }
 
         // Process fifth transmission: Class 2 Replaceable record
         {
-            let (mut send, mut recv) = conn.accept_bi().await.expect("Failed to accept bi-stream 5");
+            let (mut send, mut recv) = conn
+                .accept_bi()
+                .await
+                .expect("Failed to accept bi-stream 5");
             let repl_bytes = recv
                 .read_to_end(128 * 1024)
                 .await
@@ -327,7 +359,9 @@ async fn test_e2e_full_protocol_stack_verification() {
                 .expect("Class 2 record retrievable from storage");
             assert_eq!(repl_retrieved.payload, b"User profile version 1");
 
-            send.write_all(b"OK_REPLACEABLE").await.expect("Write ok repl");
+            send.write_all(b"OK_REPLACEABLE")
+                .await
+                .expect("Write ok repl");
             send.finish().expect("Finish stream");
         }
 
@@ -336,8 +370,8 @@ async fn test_e2e_full_protocol_stack_verification() {
 
     // 5. Client spins up endpoint and connects over ALPN ark-pqc/v1
     let client_bind_addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
-    let client_endpoint = ArkQuicEndpoint::new_client(client_bind_addr)
-        .expect("Failed to start QUIC client");
+    let client_endpoint =
+        ArkQuicEndpoint::new_client(client_bind_addr).expect("Failed to start QUIC client");
 
     let connecting = client_endpoint
         .endpoint
@@ -364,7 +398,10 @@ async fn test_e2e_full_protocol_stack_verification() {
     );
 
     let (mut send1, mut recv1) = conn.open_bi().await.expect("Failed to open bi-stream 1");
-    send1.write_all(&wire_bytes).await.expect("Client write wire bytes 1");
+    send1
+        .write_all(&wire_bytes)
+        .await
+        .expect("Client write wire bytes 1");
     send1.finish().expect("Client finish stream 1");
 
     let mut ok_buf = [0u8; 2];
@@ -373,11 +410,17 @@ async fn test_e2e_full_protocol_stack_verification() {
 
     // 7. Transmit simulated duplicate packet replay over QUIC network stream
     let (mut send2, mut recv2) = conn.open_bi().await.expect("Failed to open bi-stream 2");
-    send2.write_all(&wire_bytes).await.expect("Client send replayed wire bytes");
+    send2
+        .write_all(&wire_bytes)
+        .await
+        .expect("Client send replayed wire bytes");
     send2.finish().expect("Client finish stream 2");
 
     let mut replay_buf = [0u8; 10];
-    recv2.read_exact(&mut replay_buf).await.expect("Client read replay error");
+    recv2
+        .read_exact(&mut replay_buf)
+        .await
+        .expect("Client read replay error");
     assert_eq!(&replay_buf, b"ERR_REPLAY");
 
     // 8. Transmit simulated excessive clock drift (+45s) over QUIC network stream
@@ -392,11 +435,17 @@ async fn test_e2e_full_protocol_stack_verification() {
     );
 
     let (mut send3, mut recv3) = conn.open_bi().await.expect("Failed to open bi-stream 3");
-    send3.write_all(&drifted_wire_bytes).await.expect("Client send drifted wire bytes");
+    send3
+        .write_all(&drifted_wire_bytes)
+        .await
+        .expect("Client send drifted wire bytes");
     send3.finish().expect("Client finish stream 3");
 
     let mut drift_buf = [0u8; 9];
-    recv3.read_exact(&mut drift_buf).await.expect("Client read drift error");
+    recv3
+        .read_exact(&mut drift_buf)
+        .await
+        .expect("Client read drift error");
     assert_eq!(&drift_buf, b"ERR_DRIFT");
 
     // 9. Transmit Class 0 Ephemeral packet (kind 25000)
@@ -411,11 +460,17 @@ async fn test_e2e_full_protocol_stack_verification() {
     );
 
     let (mut send4, mut recv4) = conn.open_bi().await.expect("Failed to open bi-stream 4");
-    send4.write_all(&eph_wire_bytes).await.expect("Client send eph bytes");
+    send4
+        .write_all(&eph_wire_bytes)
+        .await
+        .expect("Client send eph bytes");
     send4.finish().expect("Client finish stream 4");
 
     let mut eph_buf = [0u8; 12];
-    recv4.read_exact(&mut eph_buf).await.expect("Client read eph ok");
+    recv4
+        .read_exact(&mut eph_buf)
+        .await
+        .expect("Client read eph ok");
     assert_eq!(&eph_buf, b"OK_EPHEMERAL");
 
     // 10. Transmit Class 2 Replaceable packet (kind 10005)
@@ -430,21 +485,35 @@ async fn test_e2e_full_protocol_stack_verification() {
     );
 
     let (mut send5, mut recv5) = conn.open_bi().await.expect("Failed to open bi-stream 5");
-    send5.write_all(&repl_wire_bytes).await.expect("Client send repl bytes");
+    send5
+        .write_all(&repl_wire_bytes)
+        .await
+        .expect("Client send repl bytes");
     send5.finish().expect("Client finish stream 5");
 
     let mut repl_buf = [0u8; 14];
-    recv5.read_exact(&mut repl_buf).await.expect("Client read repl ok");
+    recv5
+        .read_exact(&mut repl_buf)
+        .await
+        .expect("Client read repl ok");
     assert_eq!(&repl_buf, b"OK_REPLACEABLE");
 
     conn.close(0u32.into(), b"done");
-    server_handle.await.expect("Server task encountered an error");
+    server_handle
+        .await
+        .expect("Server task encountered an error");
 
     // Verify stored envelopes directly from the server storage engine
     let (_header, decoded) = WireFrame::decode(&wire_bytes).unwrap();
     let id_class1 = compute_envelope_id(&decoded).unwrap();
-    let fetched1 = storage.get_envelope(&id_class1).unwrap().expect("found class 1");
-    assert_eq!(fetched1.payload, b"E2E Sovereign Message: Secure PQC Transmission");
+    let fetched1 = storage
+        .get_envelope(&id_class1)
+        .unwrap()
+        .expect("found class 1");
+    assert_eq!(
+        fetched1.payload,
+        b"E2E Sovereign Message: Secure PQC Transmission"
+    );
 
     let fetched2 = storage
         .get_replaceable(&client_identity.sender_key_id, 10005)
@@ -463,8 +532,8 @@ async fn test_e2e_rejection_on_mismatched_alpn() {
 
     // Client connects with mismatched ALPN (e.g. "ark-pqc/v0")
     let client_bind_addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
-    let mut client_endpoint = quinn::Endpoint::client(client_bind_addr)
-        .expect("Failed to create quinn client endpoint");
+    let mut client_endpoint =
+        quinn::Endpoint::client(client_bind_addr).expect("Failed to create quinn client endpoint");
 
     let mut crypto_cfg = rustls::ClientConfig::builder_with_provider(Arc::new(
         rustls::crypto::ring::default_provider(),
@@ -478,11 +547,9 @@ async fn test_e2e_rejection_on_mismatched_alpn() {
     // Mismatched ALPN protocol
     crypto_cfg.alpn_protocols = vec![b"ark-pqc/v0".to_vec()];
 
-    let quic_client_config =
-        quinn::crypto::rustls::QuicClientConfig::try_from(crypto_cfg).unwrap();
-    client_endpoint.set_default_client_config(quinn::ClientConfig::new(Arc::new(
-        quic_client_config,
-    )));
+    let quic_client_config = quinn::crypto::rustls::QuicClientConfig::try_from(crypto_cfg).unwrap();
+    client_endpoint
+        .set_default_client_config(quinn::ClientConfig::new(Arc::new(quic_client_config)));
 
     let server_handle = tokio::spawn(async move {
         if let Some(incoming) = server_endpoint.endpoint.accept().await {
@@ -490,7 +557,9 @@ async fn test_e2e_rejection_on_mismatched_alpn() {
         }
     });
 
-    let connecting = client_endpoint.connect(bound_server_addr, "localhost").unwrap();
+    let connecting = client_endpoint
+        .connect(bound_server_addr, "localhost")
+        .unwrap();
     let client_res = connecting.await;
 
     assert!(

@@ -76,7 +76,12 @@ impl MstEntry {
         }
     }
 
-    pub fn with_tombstone(key: Vec<u8>, envelope_id: [u8; 32], timestamp: u64, is_tombstone: bool) -> Self {
+    pub fn with_tombstone(
+        key: Vec<u8>,
+        envelope_id: [u8; 32],
+        timestamp: u64,
+        is_tombstone: bool,
+    ) -> Self {
         Self {
             key,
             envelope_id,
@@ -222,7 +227,8 @@ impl MstNode {
             offset += 32;
             child_hashes.push(child_h);
 
-            let key_len = u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
+            let key_len =
+                u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
             offset += 4;
 
             if offset + key_len + 32 + 8 + 1 > bytes.len() {
@@ -244,7 +250,12 @@ impl MstNode {
             let is_tombstone = bytes[offset] != 0;
             offset += 1;
 
-            entries.push(MstEntry::with_tombstone(key, env_id, timestamp, is_tombstone));
+            entries.push(MstEntry::with_tombstone(
+                key,
+                env_id,
+                timestamp,
+                is_tombstone,
+            ));
         }
 
         if offset + 32 > bytes.len() {
@@ -285,10 +296,7 @@ pub struct MerkleSearchTree {
 
 impl MerkleSearchTree {
     pub fn new() -> Self {
-        Self {
-            root: None,
-            len: 0,
-        }
+        Self { root: None, len: 0 }
     }
 
     /// Creates a placeholder tree with a known root hash but no in-memory nodes.
@@ -414,7 +422,10 @@ impl MerkleSearchTree {
         key: &[u8],
         removed: &mut Option<([u8; 32], u64)>,
     ) -> Option<Arc<MstNode>> {
-        match node_arc.entries.binary_search_by(|e| e.key.as_slice().cmp(key)) {
+        match node_arc
+            .entries
+            .binary_search_by(|e| e.key.as_slice().cmp(key))
+        {
             Ok(idx) => {
                 let mut node = (*node_arc).clone();
                 node.cached_hash = None;
@@ -465,7 +476,8 @@ impl MerkleSearchTree {
                 if left.level > right.level {
                     let last_idx = left.children.len() - 1;
                     let last_child = left.children[last_idx].take();
-                    left.children[last_idx] = Self::merge_children(last_child, Some(Arc::new(right)));
+                    left.children[last_idx] =
+                        Self::merge_children(last_child, Some(Arc::new(right)));
                     Self::clean_node(left.level, left.entries, left.children)
                 } else if left.level < right.level {
                     let first_child = right.children[0].take();
@@ -508,18 +520,22 @@ impl MerkleSearchTree {
                 node.cached_hash = None; // invalidate hash
 
                 if entry_level == node.level {
-                    match node.entries.binary_search_by(|e| e.key.as_slice().cmp(&entry.key)) {
+                    match node
+                        .entries
+                        .binary_search_by(|e| e.key.as_slice().cmp(&entry.key))
+                    {
                         Ok(idx) => {
                             let old = (node.entries[idx].envelope_id, node.entries[idx].timestamp);
                             *replaced = Some(old);
                             node.entries[idx] = entry;
                         }
                         Err(idx) => {
-                            let (left_child, right_child) = if let Some(child) = node.children[idx].take() {
-                                Self::split_child(child, &entry.key)
-                            } else {
-                                (None, None)
-                            };
+                            let (left_child, right_child) =
+                                if let Some(child) = node.children[idx].take() {
+                                    Self::split_child(child, &entry.key)
+                                } else {
+                                    (None, None)
+                                };
 
                             node.entries.insert(idx, entry);
                             node.children[idx] = left_child;
@@ -529,7 +545,10 @@ impl MerkleSearchTree {
                     node.hash();
                     Arc::new(node)
                 } else if entry_level < node.level {
-                    match node.entries.binary_search_by(|e| e.key.as_slice().cmp(&entry.key)) {
+                    match node
+                        .entries
+                        .binary_search_by(|e| e.key.as_slice().cmp(&entry.key))
+                    {
                         Ok(idx) => {
                             let old = (node.entries[idx].envelope_id, node.entries[idx].timestamp);
                             *replaced = Some(old);
@@ -560,9 +579,15 @@ impl MerkleSearchTree {
     /// Split a subtree `node` into two subtrees:
     /// - left subtree containing all keys < `split_key`
     /// - right subtree containing all keys > `split_key`
-    pub(crate) fn split_child(node_arc: Arc<MstNode>, split_key: &[u8]) -> (Option<Arc<MstNode>>, Option<Arc<MstNode>>) {
+    pub(crate) fn split_child(
+        node_arc: Arc<MstNode>,
+        split_key: &[u8],
+    ) -> (Option<Arc<MstNode>>, Option<Arc<MstNode>>) {
         let node = (*node_arc).clone();
-        let idx = match node.entries.binary_search_by(|e| e.key.as_slice().cmp(split_key)) {
+        let idx = match node
+            .entries
+            .binary_search_by(|e| e.key.as_slice().cmp(split_key))
+        {
             Ok(i) => i,
             Err(i) => i,
         };
@@ -585,11 +610,12 @@ impl MerkleSearchTree {
         let mut right_children = Vec::new();
         right_children.push(mid_right);
 
-        let start_right = if idx < node.entries.len() && node.entries[idx].key.as_slice() == split_key {
-            idx + 1
-        } else {
-            idx
-        };
+        let start_right =
+            if idx < node.entries.len() && node.entries[idx].key.as_slice() == split_key {
+                idx + 1
+            } else {
+                idx
+            };
 
         for i in start_right..node.entries.len() {
             right_entries.push(node.entries[i].clone());

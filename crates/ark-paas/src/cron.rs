@@ -5,15 +5,15 @@
 //! upon reconnect only the single latest pending run is enqueued, completely suppressing
 //! catch-up storms.
 
-use std::str::FromStr;
-use std::sync::Arc;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
+use std::sync::Arc;
 
 use crate::error::{PaasError, Result};
 use crate::queue::{ArkQueue, Task};
-pub use ark_time::PmtClock;
 pub use ark_time::MockPmtClock;
+pub use ark_time::PmtClock;
 
 /// Standard 5-field cron schedule: minute, hour, day of month, month, day of week.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -45,16 +45,21 @@ impl CronSchedule {
             )));
         }
 
-        let minute_mask = parse_field(fields[0], 0, 59)
-            .map_err(|e| PaasError::InvalidArgument(format!("Invalid minute field '{}': {}", fields[0], e)))?;
-        let hour_mask = parse_field(fields[1], 0, 23)
-            .map_err(|e| PaasError::InvalidArgument(format!("Invalid hour field '{}': {}", fields[1], e)))? as u32;
-        let dom_mask = parse_field(fields[2], 1, 31)
-            .map_err(|e| PaasError::InvalidArgument(format!("Invalid day-of-month field '{}': {}", fields[2], e)))? as u32;
-        let month_mask = parse_field(fields[3], 1, 12)
-            .map_err(|e| PaasError::InvalidArgument(format!("Invalid month field '{}': {}", fields[3], e)))? as u16;
-        let dow_mask = parse_dow_field(fields[4])
-            .map_err(|e| PaasError::InvalidArgument(format!("Invalid day-of-week field '{}': {}", fields[4], e)))?;
+        let minute_mask = parse_field(fields[0], 0, 59).map_err(|e| {
+            PaasError::InvalidArgument(format!("Invalid minute field '{}': {}", fields[0], e))
+        })?;
+        let hour_mask = parse_field(fields[1], 0, 23).map_err(|e| {
+            PaasError::InvalidArgument(format!("Invalid hour field '{}': {}", fields[1], e))
+        })? as u32;
+        let dom_mask = parse_field(fields[2], 1, 31).map_err(|e| {
+            PaasError::InvalidArgument(format!("Invalid day-of-month field '{}': {}", fields[2], e))
+        })? as u32;
+        let month_mask = parse_field(fields[3], 1, 12).map_err(|e| {
+            PaasError::InvalidArgument(format!("Invalid month field '{}': {}", fields[3], e))
+        })? as u16;
+        let dow_mask = parse_dow_field(fields[4]).map_err(|e| {
+            PaasError::InvalidArgument(format!("Invalid day-of-week field '{}': {}", fields[4], e))
+        })?;
 
         Ok(Self {
             raw: expr.to_string(),
@@ -142,7 +147,9 @@ fn parse_field(s: &str, min: u32, max: u32) -> std::result::Result<u64, String> 
                 mask |= 1u64 << v;
             }
         } else if let Some(step_str) = part.strip_prefix("*/") {
-            let step: u32 = step_str.parse().map_err(|_| format!("Invalid step in '{}'", part))?;
+            let step: u32 = step_str
+                .parse()
+                .map_err(|_| format!("Invalid step in '{}'", part))?;
             if step == 0 {
                 return Err("Step cannot be 0".to_string());
             }
@@ -157,7 +164,9 @@ fn parse_field(s: &str, min: u32, max: u32) -> std::result::Result<u64, String> 
                 return Err(format!("Invalid step syntax in '{}'", part));
             }
             let range_part = slash_parts[0];
-            let step: u32 = slash_parts[1].parse().map_err(|_| format!("Invalid step in '{}'", part))?;
+            let step: u32 = slash_parts[1]
+                .parse()
+                .map_err(|_| format!("Invalid step in '{}'", part))?;
             if step == 0 {
                 return Err("Step cannot be 0".to_string());
             }
@@ -174,7 +183,9 @@ fn parse_field(s: &str, min: u32, max: u32) -> std::result::Result<u64, String> 
                 mask |= 1u64 << v;
             }
         } else {
-            let val: u32 = part.parse().map_err(|_| format!("Invalid integer '{}'", part))?;
+            let val: u32 = part
+                .parse()
+                .map_err(|_| format!("Invalid integer '{}'", part))?;
             if val < min || val > max {
                 return Err(format!("Value {} out of bounds [{}..={}]", val, min, max));
             }
@@ -190,13 +201,22 @@ fn parse_range(s: &str, min: u32, max: u32) -> std::result::Result<(u32, u32), S
     if parts.len() != 2 {
         return Err(format!("Invalid range syntax: '{}'", s));
     }
-    let start: u32 = parts[0].trim().parse().map_err(|_| format!("Invalid start '{}'", parts[0]))?;
-    let end: u32 = parts[1].trim().parse().map_err(|_| format!("Invalid end '{}'", parts[1]))?;
+    let start: u32 = parts[0]
+        .trim()
+        .parse()
+        .map_err(|_| format!("Invalid start '{}'", parts[0]))?;
+    let end: u32 = parts[1]
+        .trim()
+        .parse()
+        .map_err(|_| format!("Invalid end '{}'", parts[1]))?;
     if start > end {
         return Err(format!("Range start {} > end {}", start, end));
     }
     if start < min || end > max {
-        return Err(format!("Range {}-{} out of bounds [{}..={}]", start, end, min, max));
+        return Err(format!(
+            "Range {}-{} out of bounds [{}..={}]",
+            start, end, min, max
+        ));
     }
     Ok((start, end))
 }
@@ -342,7 +362,9 @@ impl<C: PmtClock> ArkCron<C> {
                 let task_id = format!("cron-{}-{}", job.id, trigger_pmt);
                 let task = Task::new(task_id, 0, job.payload.clone());
 
-                queue.enqueue(task).map_err(|e| PaasError::QueueError(e.to_string()))?;
+                queue
+                    .enqueue(task)
+                    .map_err(|e| PaasError::QueueError(e.to_string()))?;
                 enqueued.push(format!("cron-{}-{}", job.id, trigger_pmt));
             }
 

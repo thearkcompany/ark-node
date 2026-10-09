@@ -1,8 +1,8 @@
-use std::sync::Arc;
-use tempfile::tempdir;
-use ark_storage::{StorageConfig, StorageEngine};
 use ark_crdt::error::Result;
 use ark_crdt::store::{MstStore, MstStoreConfig};
+use ark_storage::{StorageConfig, StorageEngine};
+use std::sync::Arc;
+use tempfile::tempdir;
 
 #[test]
 fn test_node_persistence_across_engine_reopen() -> Result<()> {
@@ -11,7 +11,9 @@ fn test_node_persistence_across_engine_reopen() -> Result<()> {
 
     // Phase 1: Open storage engine and MST store, insert entries, commit/flush
     {
-        let storage = Arc::new(StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("open storage"));
+        let storage = Arc::new(
+            StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("open storage"),
+        );
         let store = MstStore::open(storage, MstStoreConfig::default()).expect("open mst store");
 
         let ns = "test-dns";
@@ -27,12 +29,17 @@ fn test_node_persistence_across_engine_reopen() -> Result<()> {
 
     // Phase 2: Close and Reopen from disk
     {
-        let storage = Arc::new(StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("reopen storage"));
+        let storage = Arc::new(
+            StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("reopen storage"),
+        );
         let store = MstStore::open(storage, MstStoreConfig::default()).expect("reopen mst store");
 
         let ns = "test-dns";
         let reopened_root = store.root_hash(ns)?.expect("reopened root must exist");
-        assert_eq!(reopened_root, expected_root, "root hash must persist across reopen");
+        assert_eq!(
+            reopened_root, expected_root,
+            "root hash must persist across reopen"
+        );
 
         // Verify point queries after reopen
         let alice = store.get(ns, b"ark.alice.id")?.expect("alice entry");
@@ -54,7 +61,8 @@ fn test_node_persistence_across_engine_reopen() -> Result<()> {
 #[test]
 fn test_multiple_namespaces_complete_isolation() -> Result<()> {
     let dir = tempdir().expect("tempdir");
-    let storage = Arc::new(StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("open storage"));
+    let storage =
+        Arc::new(StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("open storage"));
     let store = MstStore::open(storage, MstStoreConfig::default()).expect("open mst store");
 
     let ns_dns = "domain.ark";
@@ -100,7 +108,8 @@ fn test_multiple_namespaces_complete_isolation() -> Result<()> {
 #[test]
 fn test_lru_cache_memory_bound_and_eviction() -> Result<()> {
     let dir = tempdir().expect("tempdir");
-    let storage = Arc::new(StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("open storage"));
+    let storage =
+        Arc::new(StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("open storage"));
 
     // Set a tiny LRU cache budget of 16 KB (16 * 1024 bytes) to test eviction under pressure
     let cache_limit = 16 * 1024;
@@ -136,7 +145,9 @@ fn test_lru_cache_memory_bound_and_eviction() -> Result<()> {
     for i in (0..500).step_by(25) {
         let key = format!("cache.pressure.key.{:06}", i).into_bytes();
         let expected_env_id = [(i % 256) as u8; 32];
-        let val = store.get(ns, &key)?.expect("evicted node reloaded from disk");
+        let val = store
+            .get(ns, &key)?
+            .expect("evicted node reloaded from disk");
         assert_eq!(val, (expected_env_id, 2000 + i as u64));
 
         // And verify cache is STILL strictly bounded

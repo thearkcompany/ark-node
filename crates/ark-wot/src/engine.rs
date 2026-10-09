@@ -1,13 +1,13 @@
 //! Unified WotEngine Facade, CRDT MST Anti-Entropy Synchronization & Subsystem Adapters (ACP-04).
 
-use std::sync::Arc;
+use crate::crypto::{CapabilityScope, TrustAttestation, TrustRevocation};
+use crate::graph::{TrustEvaluation, TrustTier};
+use crate::store::WotStore;
 use ark_core::error::Result;
 use ark_crdt::{MstConfig, MstEngine};
 use ark_protocol::envelope::ArkEnvelope;
 use ark_storage::StorageEngine;
-use crate::crypto::{CapabilityScope, TrustAttestation, TrustRevocation};
-use crate::graph::{TrustEvaluation, TrustTier};
-use crate::store::WotStore;
+use std::sync::Arc;
 
 pub const CRDT_NAMESPACE_WOT: &str = "ark/wot/v1";
 
@@ -89,12 +89,20 @@ impl WotEngine {
     }
 
     /// Ingest and store a verified TrustAttestation, updating Fjall LSM, CRDT MST, and cache.
-    pub fn record_attestation(&self, attestation: TrustAttestation, issuer_pubkey: &[u8]) -> Result<()> {
+    pub fn record_attestation(
+        &self,
+        attestation: TrustAttestation,
+        issuer_pubkey: &[u8],
+    ) -> Result<()> {
         self.store.save_attestation(&attestation, issuer_pubkey)
     }
 
     /// Ingest and store a verified TrustRevocation, updating Fjall LSM, CRDT MST, and immediately truncating trust paths.
-    pub fn revoke_attestation(&self, revocation: TrustRevocation, issuer_pubkey: &[u8]) -> Result<()> {
+    pub fn revoke_attestation(
+        &self,
+        revocation: TrustRevocation,
+        issuer_pubkey: &[u8],
+    ) -> Result<()> {
         self.store.save_revocation(&revocation, issuer_pubkey)
     }
 
@@ -114,8 +122,6 @@ impl WotEngine {
         let key = WotStore::make_relation_key(issuer_id, subject_id);
         let _ = self.mst_engine.put(CRDT_NAMESPACE_WOT, &key, envelope);
     }
-
-
 
     /// Anti-entropy subgraph synchronization returning attestations since the specified PMT epoch.
     pub fn sync_subgraph(&self, since_pmt: u64) -> Vec<TrustAttestation> {
@@ -153,7 +159,9 @@ impl WotEngine {
         match eval.tier {
             TrustTier::CorePeer => true,
             TrustTier::Trusted => self.has_capability(target, CapabilityScope::STORAGE),
-            TrustTier::Probationary => self.has_capability(target, CapabilityScope::STORAGE) && eval.score >= 0.25,
+            TrustTier::Probationary => {
+                self.has_capability(target, CapabilityScope::STORAGE) && eval.score >= 0.25
+            }
             TrustTier::Untrusted => false,
         }
     }

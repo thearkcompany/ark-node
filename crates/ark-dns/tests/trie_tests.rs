@@ -1,7 +1,7 @@
-use std::sync::Arc;
-use std::time::Instant;
 use ark_dns::record::DomainRoutingRecord;
 use ark_dns::trie::{CompressedPatriciaTrie, MerkleProof};
+use std::sync::Arc;
+use std::time::Instant;
 
 #[test]
 fn test_trie_insert_get_single() {
@@ -195,7 +195,9 @@ fn test_merkle_proof_generation_and_verification() {
     assert_ne!(root, [0u8; 32]);
 
     for r in &records {
-        let proof = trie.generate_merkle_proof(&r.fqdn).expect("proof should be generated");
+        let proof = trie
+            .generate_merkle_proof(&r.fqdn)
+            .expect("proof should be generated");
         // Acceptance criterion: <= 256 bytes
         let serialized_len = proof.encoded_size();
         assert!(
@@ -301,7 +303,10 @@ fn test_lock_free_concurrent_access() {
     stop.store(true, Ordering::Relaxed);
 
     let total_lookups: usize = reader_handles.into_iter().map(|h| h.join().unwrap()).sum();
-    assert!(total_lookups > 10_000, "Readers should have executed tens of thousands of lock-free queries");
+    assert!(
+        total_lookups > 10_000,
+        "Readers should have executed tens of thousands of lock-free queries"
+    );
 }
 
 #[test]

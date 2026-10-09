@@ -11,22 +11,17 @@ use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::RwLock;
 
-use ark_crypto::identity::PersistentIdentity;
 use crate::error::{Result, VpnError};
+use ark_crypto::identity::PersistentIdentity;
 
 /// Relay execution profile
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RelayProfile {
     /// Homelab node (`--profile homelab`) with standard rate limits and consumer bandwidth allocation
+    #[default]
     Homelab,
     /// Private Turbo appliance (`--turbo-relay`) with high-throughput zero-copy ring buffers
     TurboRelay,
-}
-
-impl Default for RelayProfile {
-    fn default() -> Self {
-        Self::Homelab
-    }
 }
 
 /// Relay configuration
@@ -152,7 +147,9 @@ impl BlindRelayNode {
             Some(&dest_addr) => {
                 let payload_len = envelope.opaque_payload.len() as u64;
                 self.stats.relayed_packets.fetch_add(1, Ordering::Relaxed);
-                self.stats.relayed_bytes.fetch_add(payload_len, Ordering::Relaxed);
+                self.stats
+                    .relayed_bytes
+                    .fetch_add(payload_len, Ordering::Relaxed);
 
                 Ok(ForwardedPacket {
                     dest_addr,
@@ -161,7 +158,9 @@ impl BlindRelayNode {
             }
             None => {
                 self.stats.dropped_packets.fetch_add(1, Ordering::Relaxed);
-                self.stats.unknown_recipient_drops.fetch_add(1, Ordering::Relaxed);
+                self.stats
+                    .unknown_recipient_drops
+                    .fetch_add(1, Ordering::Relaxed);
                 let hex_recipient = envelope
                     .recipient_id
                     .iter()

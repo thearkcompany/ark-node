@@ -1,21 +1,21 @@
 pub mod envelope;
-pub mod tags;
 pub mod hashing;
+pub mod tags;
 pub mod wire;
 
 pub mod proto {
     include!(concat!(env!("OUT_DIR"), "/ark.protocol.v1.rs"));
 }
 
-pub use prost;
 pub use envelope::*;
-pub use tags::*;
 pub use hashing::*;
-pub use wire::*;
+pub use prost;
 pub use proto::{
     ArkBlobManifest, ArkNodeStatus, BlobShardDescriptor, DepinPorChallenge, DepinPorResponse,
     DomainResolveResponse, MstEntryWire, MstNodeWire, MstSyncRequest, MstSyncResponse,
 };
+pub use tags::*;
+pub use wire::*;
 
 impl From<envelope::ArkEnvelope> for proto::ArkEnvelope {
     fn from(env: envelope::ArkEnvelope) -> Self {
@@ -91,5 +91,3 @@ impl From<proto::BinaryTag> for tags::BinaryTag {
         }
     }
 }
-
-

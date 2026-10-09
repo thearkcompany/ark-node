@@ -198,11 +198,13 @@ impl VpnEngine {
 
     /// Start the VPN engine and supervise background worker loops.
     pub async fn start(self: &Arc<Self>) -> Result<()> {
-        let mut status = self.status.write().unwrap();
-        if *status == VpnEngineStatus::Running {
-            return Ok(());
+        {
+            let mut status = self.status.write().unwrap();
+            if *status == VpnEngineStatus::Running {
+                return Ok(());
+            }
+            *status = VpnEngineStatus::Starting;
         }
-        *status = VpnEngineStatus::Starting;
         let _ = self.shutdown_tx.send(false);
 
         // Automatically spawn and supervise background packet pipeline if not already running
@@ -212,6 +214,7 @@ impl VpnEngine {
             *handle_guard = Some(handle);
         }
 
+        let mut status = self.status.write().unwrap();
         *status = VpnEngineStatus::Running;
         Ok(())
     }
@@ -221,9 +224,7 @@ impl VpnEngine {
     /// Reads packets from the TUN adapter, applies egress ACL, encapsulates them with PQMT,
     /// and dispatches via Direct P2P or Relay across the configured VpnTransportSink.
     /// Returns a join handle for the background loop.
-    pub fn spawn_packet_pipeline(
-        self: &Arc<Self>,
-    ) -> tokio::task::JoinHandle<()> {
+    pub fn spawn_packet_pipeline(self: &Arc<Self>) -> tokio::task::JoinHandle<()> {
         let engine = Arc::clone(self);
         let mut shutdown_rx = self.shutdown_tx.subscribe();
 
@@ -312,7 +313,9 @@ impl VpnEngine {
         let peer = match peer_entry {
             Some(p) => p,
             None => {
-                self.metrics.dropped_no_route.fetch_add(1, Ordering::Relaxed);
+                self.metrics
+                    .dropped_no_route
+                    .fetch_add(1, Ordering::Relaxed);
                 return Ok(None);
             }
         };
@@ -325,10 +328,14 @@ impl VpnEngine {
         }
 
         // 4. PQMT Encapsulation
-        let framed_bytes = self.pqmt.frame_data_packet(peer.session.session_id, raw_packet)?;
+        let framed_bytes = self
+            .pqmt
+            .frame_data_packet(peer.session.session_id, raw_packet)?;
 
         // 5. Determine Route Mode & Target Endpoint
-        let route_mode = self.get_route_mode(&peer.ark_id).unwrap_or(RouteMode::DirectP2p);
+        let route_mode = self
+            .get_route_mode(&peer.ark_id)
+            .unwrap_or(RouteMode::DirectP2p);
         let out_pkt = match route_mode {
             RouteMode::DirectP2p => {
                 self.metrics.p2p_packets.fetch_add(1, Ordering::Relaxed);
@@ -343,7 +350,11 @@ impl VpnEngine {
                 self.metrics.relayed_packets.fetch_add(1, Ordering::Relaxed);
                 // Find first available relay or fallback to peer endpoint
                 let relays = self.relays.read().unwrap();
-                let relay_endpoint = relays.values().next().copied().unwrap_or(peer.physical_endpoint);
+                let relay_endpoint = relays
+                    .values()
+                    .next()
+                    .copied()
+                    .unwrap_or(peer.physical_endpoint);
                 OutboundPacket {
                     recipient_id: peer.ark_id,
                     target_endpoint: relay_endpoint,
@@ -354,7 +365,9 @@ impl VpnEngine {
         };
 
         self.metrics.packets_sent.fetch_add(1, Ordering::Relaxed);
-        self.metrics.bytes_sent.fetch_add(raw_packet.len() as u64, Ordering::Relaxed);
+        self.metrics
+            .bytes_sent
+            .fetch_add(raw_packet.len() as u64, Ordering::Relaxed);
 
         Ok(Some(out_pkt))
     }
@@ -388,7 +401,9 @@ impl VpnEngine {
         let peer_entry = match self.roaming.get_by_session_id(session_id) {
             Some(entry) => entry,
             None => {
-                self.metrics.dropped_no_route.fetch_add(1, Ordering::Relaxed);
+                self.metrics
+                    .dropped_no_route
+                    .fetch_add(1, Ordering::Relaxed);
                 return Ok(());
             }
         };
@@ -404,19 +419,25 @@ impl VpnEngine {
         self.tun.write_packet(&plaintext).await?;
 
         // 5. Update metrics
-        self.metrics.packets_received.fetch_add(1, Ordering::Relaxed);
-        self.metrics.bytes_received.fetch_add(plaintext.len() as u64, Ordering::Relaxed);
+        self.metrics
+            .packets_received
+            .fetch_add(1, Ordering::Relaxed);
+        self.metrics
+            .bytes_received
+            .fetch_add(plaintext.len() as u64, Ordering::Relaxed);
 
         Ok(())
     }
 
     /// Stop the VPN engine cleanly and await task termination.
     pub async fn stop(&self) -> Result<()> {
-        let mut status = self.status.write().unwrap();
-        if *status == VpnEngineStatus::Stopped {
-            return Ok(());
+        {
+            let mut status = self.status.write().unwrap();
+            if *status == VpnEngineStatus::Stopped {
+                return Ok(());
+            }
+            *status = VpnEngineStatus::Stopping;
         }
-        *status = VpnEngineStatus::Stopping;
         let _ = self.shutdown_tx.send(true);
 
         // Await background packet pipeline task termination
@@ -425,6 +446,7 @@ impl VpnEngine {
             let _ = handle.await;
         }
 
+        let mut status = self.status.write().unwrap();
         *status = VpnEngineStatus::Stopped;
         Ok(())
     }

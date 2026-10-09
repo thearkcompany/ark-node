@@ -21,7 +21,7 @@ use std::time::Duration;
 
 use ark_core::traits::AntiReplayFilter;
 use ark_crypto::fn_dsa::{verify_fn_dsa_512, FN_DSA_512_PUBKEY_SIZE, FN_DSA_512_SIGNATURE_SIZE};
-use ark_time::{DualCuckooAntiReplay, DriftValidator, PeerMedianTime};
+use ark_time::{DriftValidator, DualCuckooAntiReplay, PeerMedianTime};
 
 use crate::error::{Result, VpnError};
 use crate::framing::MicroHeader;
@@ -144,7 +144,11 @@ impl RoamingTable {
 
     /// Lookup peer session entry by session ID.
     pub fn get_by_session_id(&self, session_id: u32) -> Option<PeerSessionEntry> {
-        self.sessions_by_id.read().unwrap().get(&session_id).cloned()
+        self.sessions_by_id
+            .read()
+            .unwrap()
+            .get(&session_id)
+            .cloned()
     }
 
     /// Fast O(1) lookup of peer session by 32-byte ArkID.
@@ -174,15 +178,20 @@ impl RoamingTable {
     }
 
     /// Validate temporal clock window (+/- 30s) against Peer-Median-Time clock.
-    pub fn validate_temporal_window(&self, packet_timestamp_secs: u64, local_secs: u64) -> Result<()> {
+    pub fn validate_temporal_window(
+        &self,
+        packet_timestamp_secs: u64,
+        local_secs: u64,
+    ) -> Result<()> {
         let network_consensus_secs = self.pmt.network_time_secs(local_secs);
-        DriftValidator::validate_timestamp(packet_timestamp_secs, network_consensus_secs)
-            .map_err(|e| match e {
+        DriftValidator::validate_timestamp(packet_timestamp_secs, network_consensus_secs).map_err(
+            |e| match e {
                 ark_core::error::ArkError::ClockDriftExceeded(diff, max) => {
                     VpnError::ClockDriftExceeded(diff, max)
                 }
                 _ => VpnError::HijackingRejected(format!("Temporal validation failed: {:?}", e)),
-            })
+            },
+        )
     }
 
     /// Check and insert packet identifier into the anti-replay Cuckoo filter.
@@ -209,7 +218,9 @@ impl RoamingTable {
         local_secs: u64,
     ) -> Result<(u32, u32, Vec<u8>)> {
         if packet_bytes.len() < crate::framing::MICRO_HEADER_SIZE {
-            return Err(VpnError::FramingError("Packet too short for MicroHeader".into()));
+            return Err(VpnError::FramingError(
+                "Packet too short for MicroHeader".into(),
+            ));
         }
 
         let header = MicroHeader::from_bytes(&packet_bytes[..crate::framing::MICRO_HEADER_SIZE])?;
@@ -274,12 +285,13 @@ impl RoamingTable {
             .get_mut(&session_id)
             .ok_or(VpnError::SessionNotFound(session_id))?;
 
-        let pubkey = entry
-            .fn_dsa_pubkey
-            .ok_or_else(|| VpnError::HijackingRejected("No FN-DSA pubkey registered for session".into()))?;
+        let pubkey = entry.fn_dsa_pubkey.ok_or_else(|| {
+            VpnError::HijackingRejected("No FN-DSA pubkey registered for session".into())
+        })?;
 
-        verify_fn_dsa_512(&pubkey, signed_data, signature)
-            .map_err(|e| VpnError::HijackingRejected(format!("FN-DSA signature verification failed: {:?}", e)))?;
+        verify_fn_dsa_512(&pubkey, signed_data, signature).map_err(|e| {
+            VpnError::HijackingRejected(format!("FN-DSA signature verification failed: {:?}", e))
+        })?;
 
         // Seamless Roaming Transition
         entry.physical_endpoint = from_endpoint;

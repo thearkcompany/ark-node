@@ -146,9 +146,15 @@ mod tests {
     #[test]
     fn test_matrix_inverse() {
         let mut m = Matrix::new(3, 3);
-        m.set(0, 0, 1); m.set(0, 1, 2); m.set(0, 2, 3);
-        m.set(1, 0, 0); m.set(1, 1, 4); m.set(1, 2, 5);
-        m.set(2, 0, 1); m.set(2, 1, 0); m.set(2, 2, 6);
+        m.set(0, 0, 1);
+        m.set(0, 1, 2);
+        m.set(0, 2, 3);
+        m.set(1, 0, 0);
+        m.set(1, 1, 4);
+        m.set(1, 2, 5);
+        m.set(2, 0, 1);
+        m.set(2, 1, 0);
+        m.set(2, 2, 6);
 
         let inv = m.invert().expect("inversion should succeed");
         let identity = m.mul(&inv);

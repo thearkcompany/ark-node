@@ -14,8 +14,8 @@ use std::sync::Arc;
 use tempfile::tempdir;
 
 use ark_blob::constants::{
-    DATA_SHARDS, KIND_HOMELAB_ACK, PARITY_SHARDS, SHARD_SIZE,
-    TAG_CONTENT_CID, TAG_L2_CONTRACT, TOTAL_SHARDS,
+    DATA_SHARDS, KIND_HOMELAB_ACK, PARITY_SHARDS, SHARD_SIZE, TAG_CONTENT_CID, TAG_L2_CONTRACT,
+    TOTAL_SHARDS,
 };
 use ark_blob::custody::CustodyState;
 use ark_blob::error::BlobError;
@@ -33,26 +33,19 @@ use ark_protocol::tags::BinaryTag;
 use ark_storage::{StorageConfig, StorageEngine};
 use rand::rngs::OsRng;
 
-fn setup_engine<V: BlobEscrowVerifier>(
-    verifier: V,
-) -> (tempfile::TempDir, BlobEngine<V>) {
+fn setup_engine<V: BlobEscrowVerifier>(verifier: V) -> (tempfile::TempDir, BlobEngine<V>) {
     let dir = tempdir().expect("create tempdir");
     let storage_dir = dir.path().join("fjall");
     let cas_dir = dir.path().join("cas");
 
-    let storage = Arc::new(
-        StorageEngine::open(storage_dir, StorageConfig::frugal()).expect("open storage"),
-    );
+    let storage =
+        Arc::new(StorageEngine::open(storage_dir, StorageConfig::frugal()).expect("open storage"));
     let store = HybridBlobStore::new(cas_dir, storage).expect("open hybrid store");
     let engine = BlobEngine::new(store, verifier);
     (dir, engine)
 }
 
-fn build_homelab_ack(
-    blob_cid: &[u8; 32],
-    keypair: &FnDsaKeyPair,
-    timestamp: u64,
-) -> ArkEnvelope {
+fn build_homelab_ack(blob_cid: &[u8; 32], keypair: &FnDsaKeyPair, timestamp: u64) -> ArkEnvelope {
     let homelab_id = ark_crypto::Identity::from_public_key(&keypair.public_key);
     let fast_header = FastHeader::new(
         0,
@@ -211,8 +204,8 @@ fn test_protobuf_wire_schemas_roundtrip() {
     let dummy_shard = vec![0x12u8; SHARD_SIZE];
     let por_response = DePINChallengeResponse::generate(&dummy_shard, &challenge).unwrap();
     let response_proto_bytes = por_response.to_proto_bytes();
-    let decoded_response =
-        DePINChallengeResponse::from_proto_bytes(&response_proto_bytes).expect("response proto decode");
+    let decoded_response = DePINChallengeResponse::from_proto_bytes(&response_proto_bytes)
+        .expect("response proto decode");
     assert_eq!(decoded_response, por_response);
 }
 
@@ -230,7 +223,12 @@ fn test_quic_fastheader_shard_streaming() {
 
     // Frame shard into QUIC FastHeader wire format
     let frame_bytes = engine
-        .frame_shard_stream(shard_hash, shard_index as u32, sender_prefix, recipient_prefix)
+        .frame_shard_stream(
+            shard_hash,
+            shard_index as u32,
+            sender_prefix,
+            recipient_prefix,
+        )
         .expect("frame shard stream");
 
     // Inspect FastHeader (first 64 bytes)
@@ -297,7 +295,10 @@ fn test_full_staged_custody_homelab_ack_lifecycle() {
         let hash = &ingest.shard_hashes[idx];
         assert!(!engine.store().has_shard(hash));
         assert_eq!(
-            engine.store().get_shard_status(&ingest.blob_cid, idx as u32).unwrap(),
+            engine
+                .store()
+                .get_shard_status(&ingest.blob_cid, idx as u32)
+                .unwrap(),
             Some(ShardStatus::Purged)
         );
     }
@@ -305,7 +306,10 @@ fn test_full_staged_custody_homelab_ack_lifecycle() {
         let hash = &ingest.shard_hashes[idx];
         assert!(engine.store().has_shard(hash));
         assert_eq!(
-            engine.store().get_shard_status(&ingest.blob_cid, idx as u32).unwrap(),
+            engine
+                .store()
+                .get_shard_status(&ingest.blob_cid, idx as u32)
+                .unwrap(),
             Some(ShardStatus::Present)
         );
     }
@@ -323,7 +327,8 @@ fn test_safe_ghost_lock_unlocked_via_10_por_challenges() {
     // Perform 10 distinct PoR challenges across 10 distinct keepers
     for i in 0..10 {
         let keeper_id = [i as u8 + 1; 32];
-        let challenge = engine.create_por_challenge(ingest.blob_cid, (i % 4) as u32, [i as u8; 32], None);
+        let challenge =
+            engine.create_por_challenge(ingest.blob_cid, (i % 4) as u32, [i as u8; 32], None);
         let response = engine.handle_depin_challenge(&challenge).unwrap();
 
         let valid = engine

@@ -52,7 +52,8 @@ pub struct HandshakeInit {
 }
 
 impl HandshakeInit {
-    pub const PAYLOAD_SIZE: usize = 1 + 4 + FN_DSA_512_PUBKEY_SIZE + ML_KEM_768_PUBKEY_SIZE + 8 + FN_DSA_512_SIGNATURE_SIZE;
+    pub const PAYLOAD_SIZE: usize =
+        1 + 4 + FN_DSA_512_PUBKEY_SIZE + ML_KEM_768_PUBKEY_SIZE + 8 + FN_DSA_512_SIGNATURE_SIZE;
 
     pub fn serialize(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(Self::PAYLOAD_SIZE);
@@ -114,7 +115,8 @@ impl HandshakeInit {
         ml_kem_pubkey: &[u8; ML_KEM_768_PUBKEY_SIZE],
         timestamp: u64,
     ) -> Vec<u8> {
-        let mut data = Vec::with_capacity(1 + 4 + FN_DSA_512_PUBKEY_SIZE + ML_KEM_768_PUBKEY_SIZE + 8);
+        let mut data =
+            Vec::with_capacity(1 + 4 + FN_DSA_512_PUBKEY_SIZE + ML_KEM_768_PUBKEY_SIZE + 8);
         data.push(HANDSHAKE_INIT_TAG);
         data.extend_from_slice(&proposed_session_id.to_be_bytes());
         data.extend_from_slice(fn_dsa_pubkey);
@@ -130,8 +132,9 @@ impl HandshakeInit {
             &self.ml_kem_pubkey,
             self.timestamp,
         );
-        verify_fn_dsa_512(&self.fn_dsa_pubkey, &data, &self.signature)
-            .map_err(|e| VpnError::HandshakeFailed(format!("Signature verification failed: {:?}", e)))
+        verify_fn_dsa_512(&self.fn_dsa_pubkey, &data, &self.signature).map_err(|e| {
+            VpnError::HandshakeFailed(format!("Signature verification failed: {:?}", e))
+        })
     }
 }
 
@@ -152,7 +155,8 @@ pub struct HandshakeResp {
 }
 
 impl HandshakeResp {
-    pub const PAYLOAD_SIZE: usize = 1 + 4 + FN_DSA_512_PUBKEY_SIZE + ML_KEM_768_CIPHERTEXT_SIZE + 8 + FN_DSA_512_SIGNATURE_SIZE;
+    pub const PAYLOAD_SIZE: usize =
+        1 + 4 + FN_DSA_512_PUBKEY_SIZE + ML_KEM_768_CIPHERTEXT_SIZE + 8 + FN_DSA_512_SIGNATURE_SIZE;
 
     pub fn serialize(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(Self::PAYLOAD_SIZE);
@@ -214,7 +218,8 @@ impl HandshakeResp {
         ciphertext: &[u8; ML_KEM_768_CIPHERTEXT_SIZE],
         timestamp: u64,
     ) -> Vec<u8> {
-        let mut data = Vec::with_capacity(1 + 4 + FN_DSA_512_PUBKEY_SIZE + ML_KEM_768_CIPHERTEXT_SIZE + 8);
+        let mut data =
+            Vec::with_capacity(1 + 4 + FN_DSA_512_PUBKEY_SIZE + ML_KEM_768_CIPHERTEXT_SIZE + 8);
         data.push(HANDSHAKE_RESP_TAG);
         data.extend_from_slice(&session_id.to_be_bytes());
         data.extend_from_slice(fn_dsa_pubkey);
@@ -230,8 +235,9 @@ impl HandshakeResp {
             &self.ciphertext,
             self.timestamp,
         );
-        verify_fn_dsa_512(&self.fn_dsa_pubkey, &data, &self.signature)
-            .map_err(|e| VpnError::HandshakeFailed(format!("Signature verification failed: {:?}", e)))
+        verify_fn_dsa_512(&self.fn_dsa_pubkey, &data, &self.signature).map_err(|e| {
+            VpnError::HandshakeFailed(format!("Signature verification failed: {:?}", e))
+        })
     }
 }
 
@@ -338,13 +344,12 @@ impl PqmtEngine {
         let fn_dsa_pk = self.identity.fn_dsa_keypair.public_key;
         let ml_kem_pk = self.identity.ml_kem_keypair.public_key;
 
-        let signed_data = HandshakeInit::signed_data(
-            proposed_session_id,
-            &fn_dsa_pk,
-            &ml_kem_pk,
-            timestamp,
-        );
-        let sig_bytes = self.identity.fn_dsa_keypair.sign(&signed_data)
+        let signed_data =
+            HandshakeInit::signed_data(proposed_session_id, &fn_dsa_pk, &ml_kem_pk, timestamp);
+        let sig_bytes = self
+            .identity
+            .fn_dsa_keypair
+            .sign(&signed_data)
             .map_err(|e| VpnError::Crypto(e.to_string()))?;
 
         let mut signature = [0u8; FN_DSA_512_SIGNATURE_SIZE];
@@ -412,8 +417,12 @@ impl PqmtEngine {
 
         // Sign response
         let fn_dsa_pk = self.identity.fn_dsa_keypair.public_key;
-        let signed_data = HandshakeResp::signed_data(session_id, &fn_dsa_pk, &ciphertext, timestamp);
-        let sig_bytes = self.identity.fn_dsa_keypair.sign(&signed_data)
+        let signed_data =
+            HandshakeResp::signed_data(session_id, &fn_dsa_pk, &ciphertext, timestamp);
+        let sig_bytes = self
+            .identity
+            .fn_dsa_keypair
+            .sign(&signed_data)
             .map_err(|e| VpnError::Crypto(e.to_string()))?;
         let mut signature = [0u8; FN_DSA_512_SIGNATURE_SIZE];
         signature.copy_from_slice(&sig_bytes[..FN_DSA_512_SIGNATURE_SIZE]);
@@ -453,7 +462,10 @@ impl PqmtEngine {
         resp.verify_signature()?;
 
         // Decapsulate shared secret using initiator's ML-KEM secret key
-        let shared_secret = self.identity.ml_kem_keypair.decapsulate(&resp.ciphertext)
+        let shared_secret = self
+            .identity
+            .ml_kem_keypair
+            .decapsulate(&resp.ciphertext)
             .map_err(|e| VpnError::Crypto(e.to_string()))?;
 
         let session_id = resp.session_id;
@@ -482,13 +494,17 @@ impl PqmtEngine {
 
     /// Insert or update an active session.
     pub fn insert_session(&self, session: VpnSession) {
-        self.sessions.write().unwrap().insert(session.session_id, session);
+        self.sessions
+            .write()
+            .unwrap()
+            .insert(session.session_id, session);
     }
 
     /// Encapsulate an ongoing IP data packet into a low-overhead MicroHeader frame (16B header).
     pub fn frame_data_packet(&self, session_id: u32, ip_packet: &[u8]) -> Result<Bytes> {
         let mut sessions = self.sessions.write().unwrap();
-        let session = sessions.get_mut(&session_id)
+        let session = sessions
+            .get_mut(&session_id)
             .ok_or(VpnError::SessionNotFound(session_id))?;
 
         let seq = session.next_send_seq();
@@ -500,7 +516,9 @@ impl PqmtEngine {
     /// Checks session MAC and enforces anti-replay sequence checking.
     pub fn deframe_data_packet(&self, packet: Bytes) -> Result<(u32, u32, Bytes)> {
         if packet.len() < 16 {
-            return Err(VpnError::FramingError("Packet too short for MicroHeader".into()));
+            return Err(VpnError::FramingError(
+                "Packet too short for MicroHeader".into(),
+            ));
         }
 
         let session_id = u32::from_be_bytes([packet[0], packet[1], packet[2], packet[3]]);
@@ -508,7 +526,8 @@ impl PqmtEngine {
 
         let recv_key = {
             let sessions = self.sessions.read().unwrap();
-            let session = sessions.get(&session_id)
+            let session = sessions
+                .get(&session_id)
                 .ok_or(VpnError::SessionNotFound(session_id))?;
             session.recv_key
         };
@@ -517,7 +536,8 @@ impl PqmtEngine {
 
         {
             let mut sessions = self.sessions.write().unwrap();
-            let session = sessions.get_mut(&session_id)
+            let session = sessions
+                .get_mut(&session_id)
                 .ok_or(VpnError::SessionNotFound(session_id))?;
             session.accept_recv_seq(seq)?;
         }
@@ -540,7 +560,7 @@ impl PqmtEngine {
     pub fn unwrap_envelope(
         &self,
         envelope: &ArkEnvelope,
-    ) -> Result<(u32, [u8; 32], [u8; 32], Vec<u8>)> {
+    ) -> Result<crate::framing::UnwrappedVpnPayload> {
         crate::framing::unwrap_envelope(envelope)
     }
 }

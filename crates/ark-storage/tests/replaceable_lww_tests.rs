@@ -13,14 +13,7 @@ fn create_replaceable_envelope(
     timestamp: u64,
     payload: &[u8],
 ) -> ArkEnvelope {
-    let header = ark_core::fast_header::FastHeader::new(
-        0,
-        100,
-        kind,
-        sender_key_id,
-        [2u8; 16],
-        1,
-    );
+    let header = ark_core::fast_header::FastHeader::new(0, 100, kind, sender_key_id, [2u8; 16], 1);
     let fast_header = header.to_bytes().to_vec();
 
     let mut tags = vec![BinaryTag::new(0, kind.to_be_bytes().to_vec())];
@@ -53,7 +46,10 @@ fn test_class2_replaceable_bivariate_lww() {
     let out1 = engine.put_envelope(&env_v1).expect("put v1");
     assert_eq!(out1, RetentionOutcome::Stored);
 
-    let fetched = engine.get_replaceable(&sender, kind).expect("get").expect("found");
+    let fetched = engine
+        .get_replaceable(&sender, kind)
+        .expect("get")
+        .expect("found");
     assert_eq!(fetched.payload, b"profile v1");
 
     // 2. Newer write at t=200 -> Replaced
@@ -61,7 +57,10 @@ fn test_class2_replaceable_bivariate_lww() {
     let out2 = engine.put_envelope(&env_v2).expect("put v2");
     assert_eq!(out2, RetentionOutcome::Replaced);
 
-    let fetched = engine.get_replaceable(&sender, kind).expect("get").expect("found");
+    let fetched = engine
+        .get_replaceable(&sender, kind)
+        .expect("get")
+        .expect("found");
     assert_eq!(fetched.payload, b"profile v2");
 
     // 3. Stale write at t=50 -> SupersededLww
@@ -70,7 +69,10 @@ fn test_class2_replaceable_bivariate_lww() {
     assert_eq!(out_stale, RetentionOutcome::SupersededLww);
 
     // Current state should still be v2
-    let fetched = engine.get_replaceable(&sender, kind).expect("get").expect("found");
+    let fetched = engine
+        .get_replaceable(&sender, kind)
+        .expect("get")
+        .expect("found");
     assert_eq!(fetched.payload, b"profile v2");
 
     // 4. Equal timestamp tie-breaking by digest
@@ -90,7 +92,10 @@ fn test_class2_replaceable_bivariate_lww() {
     let out_loser = engine.put_envelope(loser).expect("put loser");
     assert_eq!(out_loser, expected_second_outcome);
 
-    let fetched = engine.get_replaceable(&sender, kind).expect("get").expect("found");
+    let fetched = engine
+        .get_replaceable(&sender, kind)
+        .expect("get")
+        .expect("found");
     assert_eq!(fetched.payload, winner.payload);
 }
 
@@ -112,22 +117,35 @@ fn test_class3_parameterized_replaceable_isolation() {
     assert_eq!(out2, RetentionOutcome::Stored);
 
     // Verify isolation
-    let fetched_dns = engine.get_param_d(&sender, kind, b"dns/ark").expect("get").expect("found");
+    let fetched_dns = engine
+        .get_param_d(&sender, kind, b"dns/ark")
+        .expect("get")
+        .expect("found");
     assert_eq!(fetched_dns.payload, b"1.1.1.1");
 
-    let fetched_eth = engine.get_param_d(&sender, kind, b"dns/eth").expect("get").expect("found");
+    let fetched_eth = engine
+        .get_param_d(&sender, kind, b"dns/eth")
+        .expect("get")
+        .expect("found");
     assert_eq!(fetched_eth.payload, b"2.2.2.2");
 
     // Update dns/ark at t=150
-    let env_dns_updated = create_replaceable_envelope(sender, kind, Some(b"dns/ark"), 150, b"8.8.8.8");
+    let env_dns_updated =
+        create_replaceable_envelope(sender, kind, Some(b"dns/ark"), 150, b"8.8.8.8");
     let out_up = engine.put_envelope(&env_dns_updated).expect("update");
     assert_eq!(out_up, RetentionOutcome::Replaced);
 
-    let fetched_dns_updated = engine.get_param_d(&sender, kind, b"dns/ark").expect("get").expect("found");
+    let fetched_dns_updated = engine
+        .get_param_d(&sender, kind, b"dns/ark")
+        .expect("get")
+        .expect("found");
     assert_eq!(fetched_dns_updated.payload, b"8.8.8.8");
 
     // dns/eth remains unchanged
-    let fetched_eth_unchanged = engine.get_param_d(&sender, kind, b"dns/eth").expect("get").expect("found");
+    let fetched_eth_unchanged = engine
+        .get_param_d(&sender, kind, b"dns/eth")
+        .expect("get")
+        .expect("found");
     assert_eq!(fetched_eth_unchanged.payload, b"2.2.2.2");
 }
 
@@ -151,7 +169,10 @@ fn test_replaceable_unified_get_and_delete() {
     let deleted = engine.delete_envelope(&id).expect("delete");
     assert!(deleted);
     assert!(engine.get_envelope(&id).expect("get").is_none());
-    assert!(engine.get_replaceable(&sender, kind).expect("get").is_none());
+    assert!(engine
+        .get_replaceable(&sender, kind)
+        .expect("get")
+        .is_none());
 
     // Test Class 3
     let kind3 = 30005;
@@ -165,5 +186,8 @@ fn test_replaceable_unified_get_and_delete() {
     let deleted3 = engine.delete_envelope(&id3).expect("delete");
     assert!(deleted3);
     assert!(engine.get_envelope(&id3).expect("get").is_none());
-    assert!(engine.get_param_d(&sender, kind3, b"key1").expect("get").is_none());
+    assert!(engine
+        .get_param_d(&sender, kind3, b"key1")
+        .expect("get")
+        .is_none());
 }

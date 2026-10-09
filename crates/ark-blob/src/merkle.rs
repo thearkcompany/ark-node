@@ -4,11 +4,11 @@
 //! - Tier 2: 14 individual shard roots computed over 4 KB sub-blocks of each 1 MB shard.
 //! - ShardMerkleProof: generation and verification of inclusion proof in O(log N) microseconds.
 
-use sha3::{Digest, Sha3_256};
 use crate::constants::{
     SHARD_SIZE, SUB_BLOCKS_PER_SHARD, SUB_BLOCK_SIZE, SUB_CHUNK_SIZE, TOTAL_SHARDS,
 };
 use crate::error::{BlobError, Result};
+use sha3::{Digest, Sha3_256};
 
 /// Computes the SHA3-256 hash of two child digests.
 #[inline]
@@ -239,7 +239,9 @@ impl ShardMerkleProof {
     /// Decodes the proof from compact binary format.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 42 {
-            return Err(BlobError::SerializationError("Buffer too short".to_string()));
+            return Err(BlobError::SerializationError(
+                "Buffer too short".to_string(),
+            ));
         }
         let shard_index = u32::from_be_bytes(bytes[0..4].try_into().unwrap());
         let sub_block_index = u32::from_be_bytes(bytes[4..8].try_into().unwrap());
@@ -249,7 +251,9 @@ impl ShardMerkleProof {
 
         let expected_total = 42 + path_len * 33;
         if bytes.len() < expected_total {
-            return Err(BlobError::SerializationError("Buffer truncated".to_string()));
+            return Err(BlobError::SerializationError(
+                "Buffer truncated".to_string(),
+            ));
         }
 
         let mut offset = 42;

@@ -1,30 +1,22 @@
-use std::sync::Arc;
-use tempfile::tempdir;
-use ark_protocol::envelope::ArkEnvelope;
-use ark_protocol::tags::BinaryTag;
-use ark_protocol::{MstSyncRequest, MstSyncResponse};
-use ark_storage::{compute_envelope_id, StorageConfig, StorageEngine};
 use ark_crdt::error::ArkCrdtError;
 use ark_crdt::mst::{MstEntry, MstNode};
 use ark_crdt::store::{MstStore, MstStoreConfig};
 use ark_crdt::sync::{
-    apply_sync_response, handle_sync_request, node_to_wire, wire_to_node,
-    MAX_SYNC_BATCH_NODES,
+    apply_sync_response, handle_sync_request, node_to_wire, wire_to_node, MAX_SYNC_BATCH_NODES,
 };
+use ark_protocol::envelope::ArkEnvelope;
+use ark_protocol::tags::BinaryTag;
+use ark_protocol::{MstSyncRequest, MstSyncResponse};
+use ark_storage::{compute_envelope_id, StorageConfig, StorageEngine};
+use std::sync::Arc;
+use tempfile::tempdir;
 
 fn create_test_envelope(kind: u32, timestamp: u64, payload: &[u8]) -> ArkEnvelope {
     let mut sender_key_id = [1u8; 16];
     let payload_len = payload.len().min(16);
     sender_key_id[..payload_len].copy_from_slice(&payload[..payload_len]);
 
-    let header = ark_core::fast_header::FastHeader::new(
-        1,
-        0,
-        kind,
-        sender_key_id,
-        [2u8; 16],
-        1,
-    );
+    let header = ark_core::fast_header::FastHeader::new(1, 0, kind, sender_key_id, [2u8; 16], 1);
     let mut sender_id = vec![0u8; 32];
     sender_id[..16].copy_from_slice(&sender_key_id);
 
@@ -109,7 +101,8 @@ fn test_apply_sync_response_rejects_hash_mismatch() {
     let ns = "test-validation";
 
     let mut node = MstNode::new(1);
-    node.entries.push(MstEntry::new(b"tampered".to_vec(), [1u8; 32], 100));
+    node.entries
+        .push(MstEntry::new(b"tampered".to_vec(), [1u8; 32], 100));
     node.children = vec![None, None];
     let _real_hash = node.hash();
 
@@ -128,7 +121,10 @@ fn test_apply_sync_response_rejects_hash_mismatch() {
     assert!(result.is_err(), "must reject mismatched node hash");
     match result.err().unwrap() {
         ArkCrdtError::InvalidNodeHash { .. } | ArkCrdtError::ValidationError(_) => {}
-        other => panic!("expected InvalidNodeHash or ValidationError, got {:?}", other),
+        other => panic!(
+            "expected InvalidNodeHash or ValidationError, got {:?}",
+            other
+        ),
     }
 }
 
@@ -141,7 +137,8 @@ fn test_apply_sync_response_rejects_depth_limit() {
 
     // Depth > 16 (level 17)
     let mut node = MstNode::new(17);
-    node.entries.push(MstEntry::new(b"deep".to_vec(), [1u8; 32], 100));
+    node.entries
+        .push(MstEntry::new(b"deep".to_vec(), [1u8; 32], 100));
     node.children = vec![None, None];
     let wire = node_to_wire(&mut node);
 
@@ -156,8 +153,13 @@ fn test_apply_sync_response_rejects_depth_limit() {
     assert!(result.is_err(), "must reject depth > 16");
     match result.err().unwrap() {
         ArkCrdtError::DepthLimitExceeded(d) => assert!(d > 16),
-        ArkCrdtError::ValidationError(msg) => assert!(msg.contains("depth") || msg.contains("level")),
-        other => panic!("expected DepthLimitExceeded or ValidationError, got {:?}", other),
+        ArkCrdtError::ValidationError(msg) => {
+            assert!(msg.contains("depth") || msg.contains("level"))
+        }
+        other => panic!(
+            "expected DepthLimitExceeded or ValidationError, got {:?}",
+            other
+        ),
     }
 }
 
@@ -177,7 +179,11 @@ fn test_end_to_end_sync_convergence() {
     // Node A writes keys
     for i in 0..20 {
         let key = format!("cluster/key/a_{}", i).into_bytes();
-        let env = create_test_envelope(10001, 1000 + i as u64, format!("payload_a_{}", i).as_bytes());
+        let env = create_test_envelope(
+            10001,
+            1000 + i as u64,
+            format!("payload_a_{}", i).as_bytes(),
+        );
         let env_id = compute_envelope_id(&env).unwrap();
         storage_a.put_envelope(&env).unwrap();
         store_a.put(ns, key, env_id, 1000 + i as u64).unwrap();
@@ -186,7 +192,11 @@ fn test_end_to_end_sync_convergence() {
     // Node B writes keys
     for i in 0..20 {
         let key = format!("cluster/key/b_{}", i).into_bytes();
-        let env = create_test_envelope(10001, 2000 + i as u64, format!("payload_b_{}", i).as_bytes());
+        let env = create_test_envelope(
+            10001,
+            2000 + i as u64,
+            format!("payload_b_{}", i).as_bytes(),
+        );
         let env_id = compute_envelope_id(&env).unwrap();
         storage_b.put_envelope(&env).unwrap();
         store_b.put(ns, key, env_id, 2000 + i as u64).unwrap();
@@ -222,7 +232,10 @@ fn test_end_to_end_sync_convergence() {
     // Assert convergence: root hashes must be identical
     let root_a_final = store_a.root_hash(ns).unwrap().unwrap();
     let root_b_final = store_b.root_hash(ns).unwrap().unwrap();
-    assert_eq!(root_a_final, root_b_final, "Roots must converge to identical hash");
+    assert_eq!(
+        root_a_final, root_b_final,
+        "Roots must converge to identical hash"
+    );
 
     // Point queries on both nodes must return the same data
     for i in 0..20 {

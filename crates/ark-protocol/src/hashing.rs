@@ -1,8 +1,8 @@
 //! Canonical message ID hashing using Encrypt-then-Sign principle.
 //! ID = SHA3-256(FastHeader || SenderID || RecipientID || EncryptedPayload || TagMask)
 
-use sha3::{Digest, Sha3_256};
 use crate::envelope::ArkEnvelope;
+use sha3::{Digest, Sha3_256};
 
 pub fn calculate_canonical_id(envelope: &ArkEnvelope) -> [u8; 32] {
     let mut hasher = Sha3_256::new();

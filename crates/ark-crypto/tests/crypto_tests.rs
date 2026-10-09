@@ -1,8 +1,14 @@
 use ark_core::traits::ArkIdentity;
-use ark_crypto::fn_dsa::{verify_fn_dsa_512, FnDsaKeyPair, FN_DSA_512_PUBKEY_SIZE, FN_DSA_512_SECKEY_SIZE, FN_DSA_512_SIGNATURE_SIZE};
+use ark_crypto::fn_dsa::{
+    verify_fn_dsa_512, FnDsaKeyPair, FN_DSA_512_PUBKEY_SIZE, FN_DSA_512_SECKEY_SIZE,
+    FN_DSA_512_SIGNATURE_SIZE,
+};
 use ark_crypto::identity::Identity;
 use ark_crypto::kmac::Kmac256;
-use ark_crypto::ml_kem::{ml_kem_encapsulate, MlKemKeyPair, ML_KEM_768_CIPHERTEXT_SIZE, ML_KEM_768_PUBKEY_SIZE, ML_KEM_768_SECKEY_SIZE, ML_KEM_768_SHARED_SECRET_SIZE};
+use ark_crypto::ml_kem::{
+    ml_kem_encapsulate, MlKemKeyPair, ML_KEM_768_CIPHERTEXT_SIZE, ML_KEM_768_PUBKEY_SIZE,
+    ML_KEM_768_SECKEY_SIZE, ML_KEM_768_SHARED_SECRET_SIZE,
+};
 use ark_crypto::secure_mem::LockedBuffer;
 use rand::rngs::OsRng;
 use zeroize::Zeroize;
@@ -56,8 +62,7 @@ fn test_ml_kem_768_encapsulate_decapsulate_roundtrip() {
 
     // Sender encapsulates against recipient public key
     let (ciphertext, sender_shared_secret) =
-        ml_kem_encapsulate(&recipient_keypair.public_key, &mut rng)
-            .expect("Encapsulation failed");
+        ml_kem_encapsulate(&recipient_keypair.public_key, &mut rng).expect("Encapsulation failed");
 
     assert_eq!(ciphertext.len(), ML_KEM_768_CIPHERTEXT_SIZE);
     assert_eq!(sender_shared_secret.len(), ML_KEM_768_SHARED_SECRET_SIZE);

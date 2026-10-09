@@ -1,12 +1,12 @@
-use std::net::SocketAddr;
-use std::sync::Arc;
-use std::time::Duration;
-use rand_chacha::rand_core::SeedableRng;
 use ark_crypto::identity::PersistentIdentity;
 use ark_vpn::acl::{IpProtocol, VpnAction, VpnSecurityPolicy};
 use ark_vpn::engine::{RouteMode, VpnEngine, VpnEngineConfig, VpnEngineStatus};
 use ark_vpn::relay::{BlindRelayNode, RelayConfig, RelayProfile};
 use ark_vpn::tun::MockTunAdapter;
+use rand_chacha::rand_core::SeedableRng;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use std::time::Duration;
 
 #[tokio::test]
 async fn test_vpn_engine_lifecycle_and_peer_management() {
@@ -30,7 +30,10 @@ async fn test_vpn_engine_lifecycle_and_peer_management() {
     let peer_identity = PersistentIdentity::generate(&mut rng);
     let peer_addr: SocketAddr = "127.0.0.1:9099".parse().unwrap();
 
-    engine.add_peer(peer_identity.ark_id, peer_addr, None).await.expect("Add peer");
+    engine
+        .add_peer(peer_identity.ark_id, peer_addr, None)
+        .await
+        .expect("Add peer");
     assert_eq!(engine.peer_count(), 1);
 
     // Apply security policy
@@ -98,10 +101,16 @@ async fn test_vpn_engine_failover_transparent_p2p_relay_and_probing() {
 
     // Connect Node A and Node B directly initially
     let direct_addr_b: SocketAddr = "127.0.0.1:8002".parse().unwrap();
-    engine_a.add_peer(id_b_ark, direct_addr_b, None).await.unwrap();
+    engine_a
+        .add_peer(id_b_ark, direct_addr_b, None)
+        .await
+        .unwrap();
 
     // Route should initially be Direct P2P
-    assert_eq!(engine_a.get_route_mode(&id_b_ark), Some(RouteMode::DirectP2p));
+    assert_eq!(
+        engine_a.get_route_mode(&id_b_ark),
+        Some(RouteMode::DirectP2p)
+    );
 
     // Simulate direct P2P failure / degradation
     engine_a.simulate_p2p_failure(&id_b_ark);
@@ -111,7 +120,10 @@ async fn test_vpn_engine_failover_transparent_p2p_relay_and_probing() {
 
     // Probing restores P2P when direct path recovers
     engine_a.simulate_p2p_recovered(&id_b_ark);
-    assert_eq!(engine_a.get_route_mode(&id_b_ark), Some(RouteMode::DirectP2p));
+    assert_eq!(
+        engine_a.get_route_mode(&id_b_ark),
+        Some(RouteMode::DirectP2p)
+    );
 }
 
 #[tokio::test]
@@ -125,12 +137,20 @@ async fn test_vpn_engine_dual_node_mesh_pipeline_roaming_and_failover() {
     let id_a = PersistentIdentity::generate(&mut rng);
     let id_a_ark = id_a.ark_id;
     let tun_a = Arc::new(MockTunAdapter::new("tunA", 1200));
-    let engine_a = Arc::new(VpnEngine::new(id_a, tun_a.clone(), VpnEngineConfig::default()));
+    let engine_a = Arc::new(VpnEngine::new(
+        id_a,
+        tun_a.clone(),
+        VpnEngineConfig::default(),
+    ));
 
     let id_b = PersistentIdentity::generate(&mut rng);
     let id_b_ark = id_b.ark_id;
     let tun_b = Arc::new(MockTunAdapter::new("tunB", 1200));
-    let engine_b = Arc::new(VpnEngine::new(id_b, tun_b.clone(), VpnEngineConfig::default()));
+    let engine_b = Arc::new(VpnEngine::new(
+        id_b,
+        tun_b.clone(),
+        VpnEngineConfig::default(),
+    ));
 
     let addrs_a = DeterministicIpam::derive_from_ark_id(&id_a_ark);
     let addrs_b = DeterministicIpam::derive_from_ark_id(&id_b_ark);
@@ -140,23 +160,33 @@ async fn test_vpn_engine_dual_node_mesh_pipeline_roaming_and_failover() {
     let initial_endpoint_b: SocketAddr = "192.168.1.20:51820".parse().unwrap();
 
     // Register peers in engines
-    engine_a.add_peer(id_b_ark, initial_endpoint_b, None).await.unwrap();
-    engine_b.add_peer(id_a_ark, initial_endpoint_a, None).await.unwrap();
+    engine_a
+        .add_peer(id_b_ark, initial_endpoint_b, None)
+        .await
+        .unwrap();
+    engine_b
+        .add_peer(id_a_ark, initial_endpoint_a, None)
+        .await
+        .unwrap();
 
     // Allow mutual mesh traffic across Node A and Node B
     use ark_vpn::acl::{IpProtocol, VpnAction, VpnSecurityPolicy};
-    engine_a.apply_policy(VpnSecurityPolicy {
-        source_ark_id: None,
-        destination_port: None,
-        protocol: IpProtocol::Any,
-        action: VpnAction::Allow,
-    }).unwrap();
-    engine_b.apply_policy(VpnSecurityPolicy {
-        source_ark_id: None,
-        destination_port: None,
-        protocol: IpProtocol::Any,
-        action: VpnAction::Allow,
-    }).unwrap();
+    engine_a
+        .apply_policy(VpnSecurityPolicy {
+            source_ark_id: None,
+            destination_port: None,
+            protocol: IpProtocol::Any,
+            action: VpnAction::Allow,
+        })
+        .unwrap();
+    engine_b
+        .apply_policy(VpnSecurityPolicy {
+            source_ark_id: None,
+            destination_port: None,
+            protocol: IpProtocol::Any,
+            action: VpnAction::Allow,
+        })
+        .unwrap();
 
     // Start both engines
     engine_a.start().await.unwrap();
@@ -176,7 +206,9 @@ async fn test_vpn_engine_dual_node_mesh_pipeline_roaming_and_failover() {
         recv_seq: 0,
     };
     engine_a.pqmt().insert_session(session_on_a.clone());
-    engine_a.roaming().insert_session(session_on_a, initial_endpoint_b, None, 1000);
+    engine_a
+        .roaming()
+        .insert_session(session_on_a, initial_endpoint_b, None, 1000);
 
     let session_on_b = VpnSession {
         session_id,
@@ -187,7 +219,9 @@ async fn test_vpn_engine_dual_node_mesh_pipeline_roaming_and_failover() {
         recv_seq: 0,
     };
     engine_b.pqmt().insert_session(session_on_b.clone());
-    engine_b.roaming().insert_session(session_on_b, initial_endpoint_a, None, 1000);
+    engine_b
+        .roaming()
+        .insert_session(session_on_b, initial_endpoint_a, None, 1000);
 
     // 3. Exchange IPv6 Packet from Node A to Node B
     let mut ipv6_pkt = Vec::new();
@@ -208,7 +242,9 @@ async fn test_vpn_engine_dual_node_mesh_pipeline_roaming_and_failover() {
     ipv6_pkt.extend_from_slice(payload_data);
 
     // Node A processes outbound packet from TUN
-    let outbound_a = engine_a.process_outbound_packet(&ipv6_pkt).expect("Process outbound on A");
+    let outbound_a = engine_a
+        .process_outbound_packet(&ipv6_pkt)
+        .expect("Process outbound on A");
     let out_a = outbound_a.expect("Outbound packet should be generated");
     assert_eq!(out_a.recipient_id, id_b_ark);
     assert_eq!(out_a.target_endpoint, initial_endpoint_b);
@@ -248,7 +284,9 @@ async fn test_vpn_engine_dual_node_mesh_pipeline_roaming_and_failover() {
     ipv4_pkt.extend_from_slice(&[0, 0]);
     ipv4_pkt.extend_from_slice(v4_payload_data);
 
-    let outbound_b = engine_b.process_outbound_packet(&ipv4_pkt).expect("Process outbound on B");
+    let outbound_b = engine_b
+        .process_outbound_packet(&ipv4_pkt)
+        .expect("Process outbound on B");
     let out_b = outbound_b.expect("Outbound packet from B");
 
     // Node A receives from Node B's ROAMED cellular endpoint
@@ -262,7 +300,10 @@ async fn test_vpn_engine_dual_node_mesh_pipeline_roaming_and_failover() {
     assert_eq!(a_tun_received, ipv4_pkt);
 
     // Verify Node A's RoamingTable dynamically updated Node B's physical endpoint!
-    let b_roaming_entry_on_a = engine_a.roaming().get_by_ark_id(&id_b_ark).expect("Node B in RoamingTable");
+    let b_roaming_entry_on_a = engine_a
+        .roaming()
+        .get_by_ark_id(&id_b_ark)
+        .expect("Node B in RoamingTable");
     assert_eq!(b_roaming_entry_on_a.physical_endpoint, roamed_endpoint_b);
 
     // 5. Test Relay Failover on Direct P2P Degradation
@@ -275,16 +316,23 @@ async fn test_vpn_engine_dual_node_mesh_pipeline_roaming_and_failover() {
     assert_eq!(engine_a.get_route_mode(&id_b_ark), Some(RouteMode::Relayed));
 
     // Next outbound packet from A targeting B now routes to Relay!
-    let outbound_relayed = engine_a.process_outbound_packet(&ipv6_pkt).expect("Process outbound on A");
+    let outbound_relayed = engine_a
+        .process_outbound_packet(&ipv6_pkt)
+        .expect("Process outbound on A");
     let out_relayed = outbound_relayed.expect("Outbound packet relayed");
     assert_eq!(out_relayed.route_mode, RouteMode::Relayed);
     assert_eq!(out_relayed.target_endpoint, relay_addr);
 
     // P2P recovered via probing
     engine_a.simulate_p2p_recovered(&id_b_ark);
-    assert_eq!(engine_a.get_route_mode(&id_b_ark), Some(RouteMode::DirectP2p));
+    assert_eq!(
+        engine_a.get_route_mode(&id_b_ark),
+        Some(RouteMode::DirectP2p)
+    );
 
-    let outbound_p2p_again = engine_a.process_outbound_packet(&ipv6_pkt).expect("Process outbound on A");
+    let outbound_p2p_again = engine_a
+        .process_outbound_packet(&ipv6_pkt)
+        .expect("Process outbound on A");
     let out_p2p_again = outbound_p2p_again.expect("Outbound packet restored to P2P");
     assert_eq!(out_p2p_again.route_mode, RouteMode::DirectP2p);
     assert_eq!(out_p2p_again.target_endpoint, roamed_endpoint_b);
@@ -310,8 +358,7 @@ async fn test_e2e_duplex_tun_to_wire_to_tun_mesh_pipeline() {
     let mut rx_a = sink_a.take_receiver().unwrap();
 
     let engine_a = Arc::new(
-        VpnEngine::new(id_a, tun_a.clone(), VpnEngineConfig::default())
-            .with_transport_sink(sink_a),
+        VpnEngine::new(id_a, tun_a.clone(), VpnEngineConfig::default()).with_transport_sink(sink_a),
     );
 
     let id_b = PersistentIdentity::generate(&mut rng);
@@ -321,8 +368,7 @@ async fn test_e2e_duplex_tun_to_wire_to_tun_mesh_pipeline() {
     let mut rx_b = sink_b.take_receiver().unwrap();
 
     let engine_b = Arc::new(
-        VpnEngine::new(id_b, tun_b.clone(), VpnEngineConfig::default())
-            .with_transport_sink(sink_b),
+        VpnEngine::new(id_b, tun_b.clone(), VpnEngineConfig::default()).with_transport_sink(sink_b),
     );
 
     let addrs_a = DeterministicIpam::derive_from_ark_id(&id_a_ark);
@@ -335,18 +381,22 @@ async fn test_e2e_duplex_tun_to_wire_to_tun_mesh_pipeline() {
     engine_b.add_peer(id_a_ark, endpoint_a, None).await.unwrap();
 
     // Security policies: Allow all mesh traffic
-    engine_a.apply_policy(VpnSecurityPolicy {
-        source_ark_id: None,
-        destination_port: None,
-        protocol: IpProtocol::Any,
-        action: VpnAction::Allow,
-    }).unwrap();
-    engine_b.apply_policy(VpnSecurityPolicy {
-        source_ark_id: None,
-        destination_port: None,
-        protocol: IpProtocol::Any,
-        action: VpnAction::Allow,
-    }).unwrap();
+    engine_a
+        .apply_policy(VpnSecurityPolicy {
+            source_ark_id: None,
+            destination_port: None,
+            protocol: IpProtocol::Any,
+            action: VpnAction::Allow,
+        })
+        .unwrap();
+    engine_b
+        .apply_policy(VpnSecurityPolicy {
+            source_ark_id: None,
+            destination_port: None,
+            protocol: IpProtocol::Any,
+            action: VpnAction::Allow,
+        })
+        .unwrap();
 
     // Establish sessions
     let session_id = 777u32;
@@ -362,7 +412,9 @@ async fn test_e2e_duplex_tun_to_wire_to_tun_mesh_pipeline() {
         recv_seq: 0,
     };
     engine_a.pqmt().insert_session(session_on_a.clone());
-    engine_a.roaming().insert_session(session_on_a, endpoint_b, None, 2000);
+    engine_a
+        .roaming()
+        .insert_session(session_on_a, endpoint_b, None, 2000);
 
     let session_on_b = VpnSession {
         session_id,
@@ -373,7 +425,9 @@ async fn test_e2e_duplex_tun_to_wire_to_tun_mesh_pipeline() {
         recv_seq: 0,
     };
     engine_b.pqmt().insert_session(session_on_b.clone());
-    engine_b.roaming().insert_session(session_on_b, endpoint_a, None, 2000);
+    engine_b
+        .roaming()
+        .insert_session(session_on_b, endpoint_a, None, 2000);
 
     // 2. Start engines with unified lifecycle supervision!
     engine_a.start().await.unwrap();
@@ -482,4 +536,3 @@ async fn test_e2e_duplex_tun_to_wire_to_tun_mesh_pipeline() {
     assert_eq!(engine_a.status(), VpnEngineStatus::Stopped);
     assert_eq!(engine_b.status(), VpnEngineStatus::Stopped);
 }
-

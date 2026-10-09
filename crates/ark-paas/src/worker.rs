@@ -103,8 +103,9 @@ impl WasmWorker {
         let engine = Engine::new(&wasm_cfg)
             .map_err(|e| PaasError::CompilationFailed(format!("Failed to create engine: {e}")))?;
 
-        let module = Module::new(&engine, wasm_bytes)
-            .map_err(|e| PaasError::CompilationFailed(format!("Bytecode compilation failed: {e}")))?;
+        let module = Module::new(&engine, wasm_bytes).map_err(|e| {
+            PaasError::CompilationFailed(format!("Bytecode compilation failed: {e}"))
+        })?;
 
         Ok(Self {
             engine,
@@ -142,18 +143,19 @@ impl WasmWorker {
         let state = match abi_state {
             Some(mut s) => {
                 // If caller didn't override fuel limit, use config limit
-                if s.io_fuel_limit == DEFAULT_IO_FUEL_BYTES && self.config.initial_io_fuel != DEFAULT_IO_FUEL_BYTES {
+                if s.io_fuel_limit == DEFAULT_IO_FUEL_BYTES
+                    && self.config.initial_io_fuel != DEFAULT_IO_FUEL_BYTES
+                {
                     s.io_fuel_limit = self.config.initial_io_fuel;
                     s.io_fuel_remaining = self.config.initial_io_fuel;
                 }
                 s
             }
-            None => {
-                let mut s = HostAbiState::default();
-                s.io_fuel_limit = self.config.initial_io_fuel;
-                s.io_fuel_remaining = self.config.initial_io_fuel;
-                s
-            }
+            None => HostAbiState {
+                io_fuel_limit: self.config.initial_io_fuel,
+                io_fuel_remaining: self.config.initial_io_fuel,
+                ..Default::default()
+            },
         };
 
         let data = WorkerStoreData {
@@ -232,7 +234,11 @@ impl WasmWorker {
     }
 
     /// Classify wasmtime error / trap into canonical PaasError.
-    pub fn map_wasm_error(&self, store: &Store<WorkerStoreData>, err: wasmtime::Error) -> PaasError {
+    pub fn map_wasm_error(
+        &self,
+        store: &Store<WorkerStoreData>,
+        err: wasmtime::Error,
+    ) -> PaasError {
         // Check if fuel is exhausted
         if let Ok(fuel) = store.get_fuel() {
             if fuel == 0 {

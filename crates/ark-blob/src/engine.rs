@@ -124,7 +124,9 @@ impl<V: BlobEscrowVerifier> BlobEngine<V> {
 
         // 2. Validate L2 escrow contract if supplied or required
         if let Some(contract) = escrow_contract {
-            let valid = self.escrow_verifier.verify_blob_escrow(contract, &blob_cid)?;
+            let valid = self
+                .escrow_verifier
+                .verify_blob_escrow(contract, &blob_cid)?;
             if !valid {
                 return Err(BlobError::EscrowVerificationFailed(format!(
                     "L2 escrow contract 0x{} rejected for blob 0x{}",
@@ -254,10 +256,7 @@ impl<V: BlobEscrowVerifier> BlobEngine<V> {
         let manifest = BlobManifest::from_envelope(envelope)?;
 
         // Check for TAG_L2_CONTRACT
-        let escrow_tag = envelope
-            .tags
-            .iter()
-            .find(|t| t.tag_type == TAG_L2_CONTRACT);
+        let escrow_tag = envelope.tags.iter().find(|t| t.tag_type == TAG_L2_CONTRACT);
 
         match escrow_tag {
             Some(tag) => {
@@ -402,12 +401,7 @@ impl<V: BlobEscrowVerifier> BlobEngine<V> {
         recipient_prefix: [u8; 16],
     ) -> Result<Vec<u8>> {
         let shard_payload = self.store.read_shard(shard_hash)?;
-        ShardStreamFrame::encode(
-            shard_index,
-            &shard_payload,
-            sender_prefix,
-            recipient_prefix,
-        )
+        ShardStreamFrame::encode(shard_index, &shard_payload, sender_prefix, recipient_prefix)
     }
 
     /// Receives and stores a streaming shard frame from a QUIC connection.
@@ -452,10 +446,7 @@ impl<V: BlobEscrowVerifier> BlobEngineBuilder<V> {
         self
     }
 
-    pub fn escrow_verifier<NV: BlobEscrowVerifier>(
-        self,
-        verifier: NV,
-    ) -> BlobEngineBuilder<NV> {
+    pub fn escrow_verifier<NV: BlobEscrowVerifier>(self, verifier: NV) -> BlobEngineBuilder<NV> {
         BlobEngineBuilder {
             cas_dir: self.cas_dir,
             storage: self.storage,

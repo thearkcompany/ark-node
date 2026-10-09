@@ -56,4 +56,3 @@ pub const STAGED_MAX_FILE_SIZE: u64 = 25 * 1024 * 1024;
 
 /// Minimum remote PoR challenges required to satisfy SafeGhostLock: 10.
 pub const REQUIRED_POR_CHALLENGES: usize = 10;
-

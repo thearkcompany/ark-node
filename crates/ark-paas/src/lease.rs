@@ -1,7 +1,7 @@
+use crate::queue::Task;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use crate::queue::Task;
 
 /// An active in-memory execution lease associated with a dispatched task.
 #[derive(Debug)]
@@ -31,7 +31,8 @@ impl JobLease {
     }
 
     pub fn remaining_duration(&self) -> Duration {
-        self.lease_duration.saturating_sub(self.granted_at.elapsed())
+        self.lease_duration
+            .saturating_sub(self.granted_at.elapsed())
     }
 
     pub fn is_acked(&self) -> bool {

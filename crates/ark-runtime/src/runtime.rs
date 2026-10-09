@@ -93,7 +93,11 @@ impl NodeRuntimeBuilder {
             self.config.storage_config,
         )?);
 
-        let local_root = self.identity.as_ref().map(|id| id.ark_id).unwrap_or([0u8; 32]);
+        let local_root = self
+            .identity
+            .as_ref()
+            .map(|id| id.ark_id)
+            .unwrap_or([0u8; 32]);
         // Consensus time initialization
         let peer_median = Arc::new(ark_time::PeerMedianTime::new());
 
@@ -102,13 +106,19 @@ impl NodeRuntimeBuilder {
             #[derive(Clone)]
             struct PermissiveDnsVerifier;
             impl ark_dns::L2ContractVerifier for PermissiveDnsVerifier {
-                fn verify_escrow_contract(&self, _contract_id: &[u8], _owner_key_id: &[u8]) -> ark_dns::Result<bool> {
+                fn verify_escrow_contract(
+                    &self,
+                    _contract_id: &[u8],
+                    _owner_key_id: &[u8],
+                ) -> ark_dns::Result<bool> {
                     Ok(true)
                 }
             }
 
-            let overlay_store = Arc::new(ark_dns::PrivateOverlayStore::new(&storage)
-                .map_err(|e| ArkRuntimeError::Internal(format!("Dns init error: {:?}", e)))?);
+            let overlay_store = Arc::new(
+                ark_dns::PrivateOverlayStore::new(&storage)
+                    .map_err(|e| ArkRuntimeError::Internal(format!("Dns init error: {:?}", e)))?,
+            );
             let l2: Arc<dyn ark_dns::L2ContractVerifier> = Arc::new(PermissiveDnsVerifier);
             let dns_clock = Arc::new(ark_time::SystemPmtClock::new(Arc::clone(&peer_median)));
             let dns = ark_dns::SovereignDnsEngine::builder()
@@ -126,11 +136,13 @@ impl NodeRuntimeBuilder {
 
         // Initialize Blob Engine if enabled
         let blob_engine = if self.config.enable_blob {
-            let hybrid_store = ark_blob::HybridBlobStore::new(data_dir.join("blobs"), storage.clone())
-                .map_err(|e| ArkRuntimeError::Internal(format!("Blob store error: {:?}", e)))?;
+            let hybrid_store =
+                ark_blob::HybridBlobStore::new(data_dir.join("blobs"), storage.clone())
+                    .map_err(|e| ArkRuntimeError::Internal(format!("Blob store error: {:?}", e)))?;
             let blob = ark_blob::BlobEngine::new(
                 hybrid_store,
-                Arc::new(ark_blob::PermissiveBlobEscrowVerifier) as Arc<dyn ark_blob::BlobEscrowVerifier>,
+                Arc::new(ark_blob::PermissiveBlobEscrowVerifier)
+                    as Arc<dyn ark_blob::BlobEscrowVerifier>,
             );
             Some(Arc::new(blob))
         } else {
@@ -139,21 +151,16 @@ impl NodeRuntimeBuilder {
 
         // Initialize PaaS Engine if enabled
         let paas_engine = if self.config.enable_paas {
-            let queue = Arc::new(ark_paas::ArkQueue::open(
-                storage.clone(),
-                ark_paas::QueueConfig::default(),
-            ).map_err(|e| ArkRuntimeError::Internal(format!("Paas queue error: {:?}", e)))?);
+            let queue = Arc::new(
+                ark_paas::ArkQueue::open(storage.clone(), ark_paas::QueueConfig::default())
+                    .map_err(|e| ArkRuntimeError::Internal(format!("Paas queue error: {:?}", e)))?,
+            );
             let clock = Arc::new(ark_paas::InMemoryPmtClock::new(1_700_000_000));
             let kv_backend = Arc::new(ark_paas::InMemoryKvStore::new());
             let blob_backend = Arc::new(ark_paas::InMemoryBlobReader::new());
             let envelope_backend = Arc::new(ark_paas::InMemoryEnvelopeEmitter::new());
-            let paas = ark_paas::PaasEngine::new(
-                queue,
-                clock,
-                kv_backend,
-                blob_backend,
-                envelope_backend,
-            );
+            let paas =
+                ark_paas::PaasEngine::new(queue, clock, kv_backend, blob_backend, envelope_backend);
             Some(Arc::new(paas))
         } else {
             None
@@ -326,7 +333,8 @@ impl NodeHandle {
     }
 
     pub async fn shutdown(self) -> Result<()> {
-        self.status.store(NodeRuntimeStatus::Draining as u8, Ordering::SeqCst);
+        self.status
+            .store(NodeRuntimeStatus::Draining as u8, Ordering::SeqCst);
 
         // Cancel background accept loop and connection handlers
         self.cancel_token.cancel();
@@ -342,7 +350,8 @@ impl NodeHandle {
             }
         }
 
-        self.status.store(NodeRuntimeStatus::Stopped as u8, Ordering::SeqCst);
+        self.status
+            .store(NodeRuntimeStatus::Stopped as u8, Ordering::SeqCst);
         info!("NodeRuntime graceful shutdown completed");
         Ok(())
     }

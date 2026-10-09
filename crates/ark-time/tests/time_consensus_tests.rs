@@ -1,15 +1,18 @@
 use ark_core::error::ArkError;
 use ark_core::traits::AntiReplayFilter;
+use ark_time::cuckoo::DualCuckooAntiReplay;
 use ark_time::drift::DriftValidator;
 use ark_time::peer_median::PeerMedianTime;
-use ark_time::cuckoo::DualCuckooAntiReplay;
 
 #[test]
 fn test_dual_cuckoo_filter_allocation_bounds() {
     let filter = DualCuckooAntiReplay::new();
     let mem = filter.estimated_memory_bytes();
     assert!(mem > 0);
-    assert!(mem <= 24 * 1024 * 1024, "Filter memory ({mem} bytes) exceeds 24 MB ceiling");
+    assert!(
+        mem <= 24 * 1024 * 1024,
+        "Filter memory ({mem} bytes) exceeds 24 MB ceiling"
+    );
 }
 
 #[test]
@@ -41,7 +44,10 @@ fn test_dual_cuckoo_filter_generation_rotation() {
     // Replay of nonce1 should still be detected from previous generation
     match filter.check_and_insert(nonce1) {
         Err(ArkError::ReplayDetected) => {}
-        other => panic!("Expected ReplayDetected from previous generation, got: {:?}", other),
+        other => panic!(
+            "Expected ReplayDetected from previous generation, got: {:?}",
+            other
+        ),
     }
 
     // Insert new nonce in current generation
@@ -78,7 +84,10 @@ fn test_dual_cuckoo_filter_saturation_drop_policy() {
         }
     }
 
-    assert!(saturated, "Filter must reject with ReplayFilterFull when saturated");
+    assert!(
+        saturated,
+        "Filter must reject with ReplayFilterFull when saturated"
+    );
 }
 
 #[test]

@@ -1,9 +1,9 @@
 //! 64-byte Fast-Header aligned to modern CPU L1 Cache Line (64 Bytes)
 //! Facilitates zero-copy inline routing and immediate filtering before full envelope decoding.
 
-use bytemuck::{Pod, Zeroable};
 use crate::constants::{FAST_HEADER_SIZE, MAGIC_VALUE};
 use crate::error::{ArkError, Result};
+use bytemuck::{Pod, Zeroable};
 
 #[repr(C, align(64))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Pod, Zeroable)]

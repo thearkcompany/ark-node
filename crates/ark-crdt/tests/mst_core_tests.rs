@@ -112,8 +112,16 @@ fn test_order_invariance_deterministic_root() {
     }
 
     assert_ne!(tree1.root_hash(), [0u8; 32]);
-    assert_eq!(tree1.root_hash(), tree2.root_hash(), "Reverse insertion order produced different root hash!");
-    assert_eq!(tree1.root_hash(), tree3.root_hash(), "Permuted insertion order produced different root hash!");
+    assert_eq!(
+        tree1.root_hash(),
+        tree2.root_hash(),
+        "Reverse insertion order produced different root hash!"
+    );
+    assert_eq!(
+        tree1.root_hash(),
+        tree3.root_hash(),
+        "Permuted insertion order produced different root hash!"
+    );
 }
 
 #[test]
@@ -133,16 +141,15 @@ fn test_delete_updates_tree_and_matches_uninserted_tree() {
     }
 
     // Delete item 10, item 0, item 29
-    let keys_to_delete = vec![
-        pairs[10].0.clone(),
-        pairs[0].0.clone(),
-        pairs[29].0.clone(),
-    ];
+    let keys_to_delete = vec![pairs[10].0.clone(), pairs[0].0.clone(), pairs[29].0.clone()];
 
     for k in &keys_to_delete {
         let removed = tree_with_all.delete(k);
         assert!(removed.is_some(), "Key should be deleted");
-        assert!(tree_with_all.get(k).is_none(), "Key should not exist after deletion");
+        assert!(
+            tree_with_all.get(k).is_none(),
+            "Key should not exist after deletion"
+        );
     }
     assert_eq!(tree_with_all.len(), 27);
 
@@ -187,13 +194,21 @@ fn test_tree_balance_and_height_under_randomized_keys() {
     // so max level is typically 2, 3 or 4 (height = level + 1 <= 8).
     // ADR-0009 and Issue #20 specify maximum tree depth ceiling of 16.
     let height = tree.height();
-    assert!(height > 0 && height <= 8, "Tree height {} should be well balanced (<= 8) for 2000 keys", height);
+    assert!(
+        height > 0 && height <= 8,
+        "Tree height {} should be well balanced (<= 8) for 2000 keys",
+        height
+    );
 
     // Verify search tree balance and invariant properties:
     // 1. All keys in left child of entry E must be strictly less than E.key.
     // 2. All keys in right child of entry E must be strictly greater than E.key.
     // 3. Child levels must be strictly less than parent level.
-    fn verify_node_invariants(node: &std::sync::Arc<ark_crdt::mst::MstNode>, min_bound: Option<&[u8]>, max_bound: Option<&[u8]>) {
+    fn verify_node_invariants(
+        node: &std::sync::Arc<ark_crdt::mst::MstNode>,
+        min_bound: Option<&[u8]>,
+        max_bound: Option<&[u8]>,
+    ) {
         assert!(!node.entries.is_empty(), "Node must have entries");
 
         for i in 0..node.entries.len() {
@@ -205,7 +220,10 @@ fn test_tree_balance_and_height_under_randomized_keys() {
                 assert!(k.as_slice() < max, "Entry key must be < max_bound");
             }
             if i > 0 {
-                assert!(node.entries[i - 1].key < node.entries[i].key, "Entries within node must be sorted");
+                assert!(
+                    node.entries[i - 1].key < node.entries[i].key,
+                    "Entries within node must be sorted"
+                );
             }
         }
 
@@ -213,10 +231,23 @@ fn test_tree_balance_and_height_under_randomized_keys() {
 
         for (i, child_opt) in node.children.iter().enumerate() {
             if let Some(child) = child_opt {
-                assert!(child.level < node.level, "Child level {} must be < parent level {}", child.level, node.level);
+                assert!(
+                    child.level < node.level,
+                    "Child level {} must be < parent level {}",
+                    child.level,
+                    node.level
+                );
 
-                let child_min = if i == 0 { min_bound } else { Some(node.entries[i - 1].key.as_slice()) };
-                let child_max = if i < node.entries.len() { Some(node.entries[i].key.as_slice()) } else { max_bound };
+                let child_min = if i == 0 {
+                    min_bound
+                } else {
+                    Some(node.entries[i - 1].key.as_slice())
+                };
+                let child_max = if i < node.entries.len() {
+                    Some(node.entries[i].key.as_slice())
+                } else {
+                    max_bound
+                };
 
                 verify_node_invariants(child, child_min, child_max);
             }

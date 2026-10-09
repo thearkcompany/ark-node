@@ -5,8 +5,8 @@
 //! - Extracting IPv6 addresses for `AAAA` records from raw IPs or multiaddrs (e.g. `/ip6/2001:.../...`).
 //! - Synthesizing TXT records containing peer ID (`target_peer_id`), owner key (`owner_key_id`), and optional ECH keys.
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use ark_protocol::proto::DomainResolveResponse;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use crate::wire::{DnsClass, DnsRecord, DnsRecordData, DnsRecordType};
 

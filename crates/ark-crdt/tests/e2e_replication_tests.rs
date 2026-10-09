@@ -2,15 +2,15 @@
 //!
 //! Tests the unified high-level `MstEngine` API and verifies multi-peer convergence.
 
-use std::sync::Arc;
-use tempfile::tempdir;
-use ark_protocol::envelope::ArkEnvelope;
-use ark_protocol::tags::BinaryTag;
-use ark_crdt::engine::{MstConfig, MstEngine};
-use ark_crdt::MstPutOutcome;
-use ark_storage::{StorageConfig, StorageEngine};
 use ark_core::constants::MAGIC_BYTES;
 use ark_core::fast_header::FastHeader;
+use ark_crdt::engine::{MstConfig, MstEngine};
+use ark_crdt::MstPutOutcome;
+use ark_protocol::envelope::ArkEnvelope;
+use ark_protocol::tags::BinaryTag;
+use ark_storage::{StorageConfig, StorageEngine};
+use std::sync::Arc;
+use tempfile::tempdir;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -67,8 +67,14 @@ fn test_engine_put_newer_supersedes() {
     let old_env = make_envelope(1, 500);
     let new_env = make_envelope(2, 1500);
 
-    assert_eq!(engine.put("ns", key, &old_env).unwrap(), MstPutOutcome::Inserted);
-    assert_eq!(engine.put("ns", key, &new_env).unwrap(), MstPutOutcome::Updated);
+    assert_eq!(
+        engine.put("ns", key, &old_env).unwrap(),
+        MstPutOutcome::Inserted
+    );
+    assert_eq!(
+        engine.put("ns", key, &new_env).unwrap(),
+        MstPutOutcome::Updated
+    );
 
     let result = engine.get("ns", key).unwrap().unwrap();
     assert_eq!(result.timestamp, 1500);
@@ -132,20 +138,27 @@ fn test_two_node_sync_convergence() {
     // Node A writes keys a0..a4
     for i in 0u8..5 {
         let key = format!("a-key-{}", i);
-        a.put("ns", key.as_bytes(), &make_envelope(10 + i, 1000 + i as u64)).unwrap();
+        a.put(
+            "ns",
+            key.as_bytes(),
+            &make_envelope(10 + i, 1000 + i as u64),
+        )
+        .unwrap();
     }
 
     // Node B writes keys b0..b4
     for i in 0u8..5 {
         let key = format!("b-key-{}", i);
-        b.put("ns", key.as_bytes(), &make_envelope(20 + i, 2000 + i as u64)).unwrap();
+        b.put(
+            "ns",
+            key.as_bytes(),
+            &make_envelope(20 + i, 2000 + i as u64),
+        )
+        .unwrap();
     }
 
     // Roots differ before sync.
-    assert_ne!(
-        a.root_hash("ns").unwrap(),
-        b.root_hash("ns").unwrap(),
-    );
+    assert_ne!(a.root_hash("ns").unwrap(), b.root_hash("ns").unwrap(),);
 
     // Sync A → B (B requests from A).
     let req_a_to_b = ark_protocol::MstSyncRequest {
@@ -173,10 +186,26 @@ fn test_two_node_sync_convergence() {
     for i in 0u8..5 {
         let ak = format!("a-key-{}", i);
         let bk = format!("b-key-{}", i);
-        assert!(a.get("ns", ak.as_bytes()).unwrap().is_some(), "A should have a-key-{}", i);
-        assert!(b.get("ns", ak.as_bytes()).unwrap().is_some(), "B should have a-key-{}", i);
-        assert!(a.get("ns", bk.as_bytes()).unwrap().is_some(), "A should have b-key-{}", i);
-        assert!(b.get("ns", bk.as_bytes()).unwrap().is_some(), "B should have b-key-{}", i);
+        assert!(
+            a.get("ns", ak.as_bytes()).unwrap().is_some(),
+            "A should have a-key-{}",
+            i
+        );
+        assert!(
+            b.get("ns", ak.as_bytes()).unwrap().is_some(),
+            "B should have a-key-{}",
+            i
+        );
+        assert!(
+            a.get("ns", bk.as_bytes()).unwrap().is_some(),
+            "A should have b-key-{}",
+            i
+        );
+        assert!(
+            b.get("ns", bk.as_bytes()).unwrap().is_some(),
+            "B should have b-key-{}",
+            i
+        );
     }
 }
 
@@ -190,15 +219,26 @@ fn test_three_node_convergence_cascaded_sync() {
     // Write distinct keys to each node.
     for i in 0u8..10 {
         let key = format!("node-a-{}", i);
-        a.put("sync", key.as_bytes(), &make_envelope(i, 1000 + i as u64)).unwrap();
+        a.put("sync", key.as_bytes(), &make_envelope(i, 1000 + i as u64))
+            .unwrap();
     }
     for i in 0u8..10 {
         let key = format!("node-b-{}", i);
-        b.put("sync", key.as_bytes(), &make_envelope(100 + i, 2000 + i as u64)).unwrap();
+        b.put(
+            "sync",
+            key.as_bytes(),
+            &make_envelope(100 + i, 2000 + i as u64),
+        )
+        .unwrap();
     }
     for i in 0u8..10 {
         let key = format!("node-c-{}", i);
-        c.put("sync", key.as_bytes(), &make_envelope(200 + i, 3000 + i as u64)).unwrap();
+        c.put(
+            "sync",
+            key.as_bytes(),
+            &make_envelope(200 + i, 3000 + i as u64),
+        )
+        .unwrap();
     }
 
     // Sync all pairs bidirectionally.
@@ -235,16 +275,31 @@ fn test_three_node_convergence_cascaded_sync() {
     for i in 0u8..10 {
         for (lbl, engine) in [("a", &a), ("b", &b), ("c", &c)] {
             assert!(
-                engine.get("sync", format!("node-a-{}", i).as_bytes()).unwrap().is_some(),
-                "node-{} missing node-a-{}", lbl, i
+                engine
+                    .get("sync", format!("node-a-{}", i).as_bytes())
+                    .unwrap()
+                    .is_some(),
+                "node-{} missing node-a-{}",
+                lbl,
+                i
             );
             assert!(
-                engine.get("sync", format!("node-b-{}", i).as_bytes()).unwrap().is_some(),
-                "node-{} missing node-b-{}", lbl, i
+                engine
+                    .get("sync", format!("node-b-{}", i).as_bytes())
+                    .unwrap()
+                    .is_some(),
+                "node-{} missing node-b-{}",
+                lbl,
+                i
             );
             assert!(
-                engine.get("sync", format!("node-c-{}", i).as_bytes()).unwrap().is_some(),
-                "node-{} missing node-c-{}", lbl, i
+                engine
+                    .get("sync", format!("node-c-{}", i).as_bytes())
+                    .unwrap()
+                    .is_some(),
+                "node-{} missing node-c-{}",
+                lbl,
+                i
             );
         }
     }
@@ -287,7 +342,10 @@ fn test_compute_sync_diff_identical_roots_empty_plan() {
 
     let root = a.root_hash("ns").unwrap().unwrap();
     let plan = a.compute_sync_diff("ns", &root).unwrap();
-    assert!(plan.is_empty(), "identical roots should produce an empty sync plan");
+    assert!(
+        plan.is_empty(),
+        "identical roots should produce an empty sync plan"
+    );
 }
 
 // ── Helper ────────────────────────────────────────────────────────────────────

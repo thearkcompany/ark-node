@@ -40,7 +40,9 @@ pub async fn ping_peer(target: &str) -> anyhow::Result<Duration> {
 
     let start = Instant::now();
 
-    let connecting = client.endpoint.connect(target_addr, &sni_hostname)
+    let connecting = client
+        .endpoint
+        .connect(target_addr, &sni_hostname)
         .map_err(|e| anyhow::anyhow!("Failed to initiate connect to {}: {}", target_addr, e))?;
 
     let conn = tokio::time::timeout(Duration::from_secs(5), connecting)
@@ -48,7 +50,8 @@ pub async fn ping_peer(target: &str) -> anyhow::Result<Duration> {
         .map_err(|_| anyhow::anyhow!("Connection timeout to {}", target_addr))?
         .map_err(|e| anyhow::anyhow!("QUIC handshake failed with {}: {}", target_addr, e))?;
 
-    let (mut send, mut recv) = conn.open_bi()
+    let (mut send, mut recv) = conn
+        .open_bi()
         .await
         .map_err(|e| anyhow::anyhow!("Failed to open bidirectional stream: {}", e))?;
 

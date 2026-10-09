@@ -25,13 +25,11 @@ fn test_encode_and_reconstruct_exact_data() {
     assert_eq!(shards.len(), 14);
 
     // Reconstruct with first 10 shards (data shards 0..10)
-    let subset: Vec<(usize, Vec<u8>)> = shards[0..10]
-        .iter()
-        .cloned()
-        .enumerate()
-        .collect();
+    let subset: Vec<(usize, Vec<u8>)> = shards[0..10].iter().cloned().enumerate().collect();
 
-    let recovered = rs.reconstruct(&subset, original.len()).expect("reconstruct should succeed");
+    let recovered = rs
+        .reconstruct(&subset, original.len())
+        .expect("reconstruct should succeed");
     assert_eq!(recovered, original);
 }
 
@@ -42,14 +40,16 @@ fn test_reconstruct_with_insufficient_shards_fails() {
     let shards = rs.encode(&original).unwrap();
 
     // 9 shards should fail with InsufficientShards
-    let subset: Vec<(usize, Vec<u8>)> = shards[0..9]
-        .iter()
-        .cloned()
-        .enumerate()
-        .collect();
+    let subset: Vec<(usize, Vec<u8>)> = shards[0..9].iter().cloned().enumerate().collect();
 
     let res = rs.reconstruct(&subset, original.len());
-    assert!(matches!(res, Err(BlobError::InsufficientShards { available: 9, required: 10 })));
+    assert!(matches!(
+        res,
+        Err(BlobError::InsufficientShards {
+            available: 9,
+            required: 10
+        })
+    ));
 }
 
 #[test]
@@ -59,11 +59,7 @@ fn test_reconstruct_with_duplicate_shards_fails() {
     let shards = rs.encode(&original).unwrap();
 
     // 10 entries but duplicate index 0
-    let mut subset: Vec<(usize, Vec<u8>)> = shards[0..10]
-        .iter()
-        .cloned()
-        .enumerate()
-        .collect();
+    let mut subset: Vec<(usize, Vec<u8>)> = shards[0..10].iter().cloned().enumerate().collect();
     subset[1] = (0, shards[0].clone());
 
     let res = rs.reconstruct(&subset, original.len());
@@ -76,11 +72,7 @@ fn test_reconstruct_with_invalid_shard_index_fails() {
     let original = vec![0x42; 1000];
     let shards = rs.encode(&original).unwrap();
 
-    let mut subset: Vec<(usize, Vec<u8>)> = shards[0..10]
-        .iter()
-        .cloned()
-        .enumerate()
-        .collect();
+    let mut subset: Vec<(usize, Vec<u8>)> = shards[0..10].iter().cloned().enumerate().collect();
     subset[0] = (14, shards[0].clone()); // Index 14 is invalid for 10+4 (indices are 0..14, so max is 13)
 
     let res = rs.reconstruct(&subset, original.len());
@@ -93,11 +85,7 @@ fn test_reconstruct_with_mismatched_shard_lengths_fails() {
     let original = vec![0x42; 1000];
     let shards = rs.encode(&original).unwrap();
 
-    let mut subset: Vec<(usize, Vec<u8>)> = shards[0..10]
-        .iter()
-        .cloned()
-        .enumerate()
-        .collect();
+    let mut subset: Vec<(usize, Vec<u8>)> = shards[0..10].iter().cloned().enumerate().collect();
     subset[0].1.pop(); // Corrupt shard length
 
     let res = rs.reconstruct(&subset, original.len());
@@ -136,8 +124,14 @@ fn test_reconstruct_all_combinations_of_4_erasures() {
             .collect();
 
         assert_eq!(available.len(), 10);
-        let recovered = rs.reconstruct(&available, original.len()).expect("reconstruction should succeed");
-        assert_eq!(recovered, original, "Failed to reconstruct when missing {:?}", missing);
+        let recovered = rs
+            .reconstruct(&available, original.len())
+            .expect("reconstruction should succeed");
+        assert_eq!(
+            recovered, original,
+            "Failed to reconstruct when missing {:?}",
+            missing
+        );
     }
 }
 
@@ -149,7 +143,9 @@ fn test_encode_shards_1mb_standard() {
     // Encode with 1 MB standard shard size:
     // Original payload of 5 MB (smaller than 10 MB = 10 * 1 MB)
     let original = vec![0xAB; 5 * 1024 * 1024];
-    let shards = rs.encode_standard(&original).expect("encode_standard should succeed");
+    let shards = rs
+        .encode_standard(&original)
+        .expect("encode_standard should succeed");
     assert_eq!(shards.len(), 14);
     for shard in &shards {
         assert_eq!(shard.len(), 1_048_576);
@@ -164,7 +160,9 @@ fn test_encode_shards_1mb_standard() {
         .collect();
 
     assert_eq!(available.len(), 10);
-    let recovered = rs.reconstruct(&available, original.len()).expect("reconstruct standard should succeed");
+    let recovered = rs
+        .reconstruct(&available, original.len())
+        .expect("reconstruct standard should succeed");
     assert_eq!(recovered, original);
 }
 
@@ -195,9 +193,14 @@ fn test_exhaustive_erasure_combinations_property() {
                         .collect();
 
                     assert_eq!(available.len(), 10);
-                    let recovered = rs.reconstruct(&available, payload.len())
+                    let recovered = rs
+                        .reconstruct(&available, payload.len())
                         .unwrap_or_else(|e| panic!("Failed at missing {:?}: {:?}", missing, e));
-                    assert_eq!(recovered, payload, "Payload mismatch for missing {:?}", missing);
+                    assert_eq!(
+                        recovered, payload,
+                        "Payload mismatch for missing {:?}",
+                        missing
+                    );
                     count += 1;
                 }
             }

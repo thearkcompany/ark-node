@@ -1,8 +1,8 @@
 //! Temporal Dynamics, Half-Life Decay, and Prioritized Revocation Index (ACP-04).
 
-use std::sync::Arc;
-use dashmap::DashMap;
 use crate::crypto::{TrustAttestation, TrustRevocation};
+use dashmap::DashMap;
+use std::sync::Arc;
 
 /// Standard half-life decay period: 30 days (in seconds).
 pub const HALF_LIFE_SECS: u64 = 30 * 86400;
@@ -56,8 +56,14 @@ impl RevocationIndex {
     }
 
     /// Retrieve the revocation record if present.
-    pub fn get_revocation(&self, issuer_id: &[u8; 32], subject_id: &[u8; 32]) -> Option<TrustRevocation> {
-        self.revocations.get(&(*issuer_id, *subject_id)).map(|r| r.clone())
+    pub fn get_revocation(
+        &self,
+        issuer_id: &[u8; 32],
+        subject_id: &[u8; 32],
+    ) -> Option<TrustRevocation> {
+        self.revocations
+            .get(&(*issuer_id, *subject_id))
+            .map(|r| r.clone())
     }
 
     /// Total active revocations tracked.
@@ -104,7 +110,11 @@ impl TemporalValidator {
     /// 1. If revoked by issuer against subject -> returns None (absolute priority).
     /// 2. If current_pmt > expires_at_pmt -> returns None (expired).
     /// 3. If valid -> returns Some(decayed_weight) calculated via half-life decay.
-    pub fn evaluate_attestation(&self, attestation: &TrustAttestation, current_pmt: u64) -> Option<f64> {
+    pub fn evaluate_attestation(
+        &self,
+        attestation: &TrustAttestation,
+        current_pmt: u64,
+    ) -> Option<f64> {
         if self.is_revoked(&attestation.issuer_id, &attestation.subject_id) {
             return None;
         }

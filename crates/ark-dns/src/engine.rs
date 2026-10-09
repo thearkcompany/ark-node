@@ -5,16 +5,16 @@
 //! 2. Tier 2: Private Overlay -> local Fjall storage check (`dns_private_overlays` keyspace) for caller ArkID.
 //! 3. Tier 3: Public Patricia Trie -> lock-free trie lookup, checking lease lifecycle and Merkle inclusion proof.
 
-use std::sync::Arc;
 use ark_protocol::envelope::ArkEnvelope;
 use ark_protocol::proto::DomainResolveResponse;
 use ark_storage::StorageEngine;
 use prost::Message;
+use std::sync::Arc;
 
 use crate::anti_sybil::{validate_dns_claim, L2ContractVerifier};
 use crate::crypto_name::{is_cryptographic_name, parse_cryptographic_name};
 use crate::error::{DnsError, Result};
-use crate::lifecycle::{LeaseLifecycleEngine, SystemPmtClock, PmtClock};
+use crate::lifecycle::{LeaseLifecycleEngine, PmtClock, SystemPmtClock};
 use crate::overlay::{OverlayRecord, PrivateOverlayStore};
 use crate::record::DomainRoutingRecord;
 use crate::SovereignDnsTrie;
@@ -22,7 +22,11 @@ use crate::SovereignDnsTrie;
 /// Packet handling trait for binary wire dispatch.
 pub trait DnsPacketHandler {
     /// Handle a DNS domain lookup and return encoded protobuf bytes.
-    fn handle_dns_query_packet(&self, fqdn: &str, caller_ark_id: Option<&[u8; 32]>) -> Result<Vec<u8>>;
+    fn handle_dns_query_packet(
+        &self,
+        fqdn: &str,
+        caller_ark_id: Option<&[u8; 32]>,
+    ) -> Result<Vec<u8>>;
 }
 
 /// Unified Sovereign DNS Engine facade.
@@ -69,7 +73,11 @@ impl SovereignDnsEngine {
     /// 1. Tier 1: Cryptographic names (`ark1<bech32>.ark`)
     /// 2. Tier 2: Private Overlay (checked if `caller_ark_id` is supplied or default is configured)
     /// 3. Tier 3: Public Patricia Trie with Merkle inclusion proof
-    pub fn resolve(&self, fqdn: &str, caller_ark_id: Option<&[u8; 32]>) -> Result<DomainResolveResponse> {
+    pub fn resolve(
+        &self,
+        fqdn: &str,
+        caller_ark_id: Option<&[u8; 32]>,
+    ) -> Result<DomainResolveResponse> {
         let trimmed = fqdn.trim();
 
         // 1. Tier 1: Cryptographic names (ark1<bech32>.ark)
@@ -150,14 +158,11 @@ impl SovereignDnsEngine {
     /// then registers the lease in the Patricia Trie.
     pub fn register_public_domain(&self, claim_envelope: &ArkEnvelope) -> Result<()> {
         let claim = validate_dns_claim(claim_envelope, self.l2_verifier.as_ref())?;
-        let (target_peer_id, routing_addrs, ech_public_key) = Self::extract_envelope_payload(claim_envelope);
+        let (target_peer_id, routing_addrs, ech_public_key) =
+            Self::extract_envelope_payload(claim_envelope);
 
-        self.lifecycle_engine.register_claim(
-            &claim,
-            target_peer_id,
-            routing_addrs,
-            ech_public_key,
-        )
+        self.lifecycle_engine
+            .register_claim(&claim, target_peer_id, routing_addrs, ech_public_key)
     }
 
     /// Renew an existing public domain lease from a `KIND_DNS_CLAIM_PUBLIC` envelope.
@@ -165,14 +170,11 @@ impl SovereignDnsEngine {
     /// Validates the claim envelope and verifies owner monopoly during Active / Grace Period states.
     pub fn renew_public_domain(&self, claim_envelope: &ArkEnvelope) -> Result<()> {
         let claim = validate_dns_claim(claim_envelope, self.l2_verifier.as_ref())?;
-        let (target_peer_id, routing_addrs, ech_public_key) = Self::extract_envelope_payload(claim_envelope);
+        let (target_peer_id, routing_addrs, ech_public_key) =
+            Self::extract_envelope_payload(claim_envelope);
 
-        self.lifecycle_engine.renew_claim(
-            &claim,
-            target_peer_id,
-            routing_addrs,
-            ech_public_key,
-        )
+        self.lifecycle_engine
+            .renew_claim(&claim, target_peer_id, routing_addrs, ech_public_key)
     }
 
     /// Sweep and evict all expired public domain records past their 14-day grace period.
@@ -181,12 +183,20 @@ impl SovereignDnsEngine {
     }
 
     /// CRUD: Register or update a private overlay record for the specified owner ArkID.
-    pub fn register_private_overlay(&self, owner_ark_id: &[u8; 32], record: &OverlayRecord) -> Result<()> {
+    pub fn register_private_overlay(
+        &self,
+        owner_ark_id: &[u8; 32],
+        record: &OverlayRecord,
+    ) -> Result<()> {
         self.overlay_store.put_overlay(owner_ark_id, record)
     }
 
     /// CRUD: Retrieve a private overlay record for a specific owner ArkID and domain.
-    pub fn get_private_overlay(&self, owner_ark_id: &[u8; 32], domain: &str) -> Result<Option<OverlayRecord>> {
+    pub fn get_private_overlay(
+        &self,
+        owner_ark_id: &[u8; 32],
+        domain: &str,
+    ) -> Result<Option<OverlayRecord>> {
         self.overlay_store.get_overlay(owner_ark_id, domain)
     }
 
@@ -247,7 +257,11 @@ impl SovereignDnsEngine {
 }
 
 impl DnsPacketHandler for SovereignDnsEngine {
-    fn handle_dns_query_packet(&self, fqdn: &str, caller_ark_id: Option<&[u8; 32]>) -> Result<Vec<u8>> {
+    fn handle_dns_query_packet(
+        &self,
+        fqdn: &str,
+        caller_ark_id: Option<&[u8; 32]>,
+    ) -> Result<Vec<u8>> {
         let response = self.resolve(fqdn, caller_ark_id)?;
         Ok(response.encode_to_vec())
     }
@@ -322,19 +336,24 @@ impl SovereignDnsEngineBuilder {
             (None, Some(storage)) => Arc::new(PrivateOverlayStore::new(&storage)?),
             (None, None) => {
                 return Err(DnsError::InvalidRecord(
-                    "Either storage or overlay_store must be provided to SovereignDnsEngineBuilder".to_string(),
+                    "Either storage or overlay_store must be provided to SovereignDnsEngineBuilder"
+                        .to_string(),
                 ));
             }
         };
 
-        let trie = self.trie.unwrap_or_else(|| Arc::new(SovereignDnsTrie::new()));
+        let trie = self
+            .trie
+            .unwrap_or_else(|| Arc::new(SovereignDnsTrie::new()));
 
         let clock = self
             .clock
             .unwrap_or_else(|| Arc::new(SystemPmtClock::default()));
 
         let l2_verifier = self.l2_verifier.ok_or_else(|| {
-            DnsError::InvalidRecord("L2ContractVerifier must be provided to SovereignDnsEngineBuilder".to_string())
+            DnsError::InvalidRecord(
+                "L2ContractVerifier must be provided to SovereignDnsEngineBuilder".to_string(),
+            )
         })?;
 
         let lifecycle_engine = LeaseLifecycleEngine::with_clock(trie, clock);
