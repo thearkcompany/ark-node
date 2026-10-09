@@ -21,7 +21,7 @@ async fn test_vpn_engine_lifecycle_and_peer_management() {
         p2p_timeout: Duration::from_millis(100),
     };
 
-    let engine = VpnEngine::new(identity, tun.clone(), config);
+    let engine = Arc::new(VpnEngine::new(identity, tun.clone(), config));
     assert_eq!(engine.status(), VpnEngineStatus::Stopped);
 
     engine.start().await.expect("Engine should start");
