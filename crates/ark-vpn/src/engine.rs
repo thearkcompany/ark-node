@@ -21,6 +21,7 @@ use crate::error::Result;
 use crate::ipam::{DeterministicIpam, DualStackAddress};
 use crate::pqmt::PqmtEngine;
 use crate::roaming::RoamingTable;
+use crate::transport::VpnTransportSink;
 use crate::tun::VirtualTunAdapter;
 
 /// Active route mode between two peers.
@@ -123,6 +124,7 @@ struct PeerRouteState {
 pub struct VpnEngine {
     identity: Arc<PersistentIdentity>,
     tun: Arc<dyn VirtualTunAdapter>,
+    transport_sink: RwLock<Option<Arc<dyn VpnTransportSink>>>,
     config: VpnEngineConfig,
     pqmt: Arc<PqmtEngine>,
     roaming: Arc<RoamingTable>,
@@ -151,6 +153,7 @@ impl VpnEngine {
         Self {
             identity: Arc::clone(pqmt.identity_arc()),
             tun,
+            transport_sink: RwLock::new(None),
             config,
             pqmt,
             roaming,
@@ -162,6 +165,18 @@ impl VpnEngine {
             shutdown_tx,
             _shutdown_rx: shutdown_rx,
         }
+    }
+
+    /// Configure the outbound network transport sink.
+    pub fn set_transport_sink(&self, sink: Arc<dyn VpnTransportSink>) {
+        let mut guard = self.transport_sink.write().unwrap();
+        *guard = Some(sink);
+    }
+
+    /// Builder pattern helper to configure the transport sink.
+    pub fn with_transport_sink(self, sink: Arc<dyn VpnTransportSink>) -> Self {
+        self.set_transport_sink(sink);
+        self
     }
 
     /// Access local persistent identity.
@@ -194,7 +209,8 @@ impl VpnEngine {
     /// Spawn packet pipeline connecting TUN adapter to mesh routing.
     ///
     /// Reads packets from the TUN adapter, applies egress ACL, encapsulates them with PQMT,
-    /// and dispatches via Direct P2P or Relay. Returns a join handle for the background loop.
+    /// and dispatches via Direct P2P or Relay across the configured VpnTransportSink.
+    /// Returns a join handle for the background loop.
     pub fn spawn_packet_pipeline(
         self: &Arc<Self>,
     ) -> tokio::task::JoinHandle<()> {
@@ -212,7 +228,23 @@ impl VpnEngine {
                     pkt_res = engine.tun.read_packet() => {
                         match pkt_res {
                             Ok(packet) => {
-                                let _ = engine.process_outbound_packet(&packet);
+                                match engine.process_outbound_packet(&packet) {
+                                    Ok(Some(out_pkt)) => {
+                                        let sink_opt = {
+                                            let guard = engine.transport_sink.read().unwrap();
+                                            guard.clone()
+                                        };
+                                        if let Some(sink) = sink_opt {
+                                            if let Err(_err) = sink.send_packet(out_pkt).await {
+                                                engine.metrics.dropped_errors.fetch_add(1, Ordering::Relaxed);
+                                            }
+                                        }
+                                    }
+                                    Ok(None) => {}
+                                    Err(_) => {
+                                        engine.metrics.dropped_errors.fetch_add(1, Ordering::Relaxed);
+                                    }
+                                }
                             }
                             Err(_) => {
                                 // If TUN is closed or stopping, yield or break
