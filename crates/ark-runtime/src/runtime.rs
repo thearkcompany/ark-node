@@ -225,6 +225,7 @@ impl NodeRuntimeBuilder {
                             tokio::spawn(async move {
                                 match incoming.await {
                                     Ok(conn) => {
+                                        let remote_addr = conn.remote_address();
                                         loop {
                                             tokio::select! {
                                                 _ = conn_token.cancelled() => {
@@ -247,7 +248,7 @@ impl NodeRuntimeBuilder {
                                                                 }
 
                                                                 if wire_buf.len() >= ark_core::constants::FAST_HEADER_SIZE {
-                                                                    match disp.process_wire_frame(&wire_buf) {
+                                                                    match disp.process_wire_frame_from(&wire_buf, Some(remote_addr)) {
                                                                         Ok(_) => {
                                                                             let _ = send.write_all(&[1u8]).await;
                                                                         }

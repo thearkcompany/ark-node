@@ -1,4 +1,6 @@
+use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::debug;
 use ark_core::FastHeader;
 use ark_crdt::{MstConfig, MstEngine, KIND_KV_MST_SYNC};
@@ -98,14 +100,29 @@ impl EnvelopeDispatcher {
 
     /// Primary wire processing entrypoint: inspects raw wire frame and dispatches
     pub fn process_wire_frame(&self, wire_bytes: &[u8]) -> Result<DispatchOutcome> {
+        self.process_wire_frame_from(wire_bytes, None)
+    }
+
+    /// Primary wire processing entrypoint with peer socket address propagation
+    pub fn process_wire_frame_from(&self, wire_bytes: &[u8], remote_addr: Option<SocketAddr>) -> Result<DispatchOutcome> {
         let (header, envelope) = WireFrame::decode(wire_bytes)
             .map_err(ArkRuntimeError::Core)?;
 
-        self.dispatch_envelope(&header, &envelope)
+        self.dispatch_envelope_from(&header, &envelope, remote_addr)
     }
 
     /// Dispatch decoded envelope based on kind with strict peripheral fault isolation
     pub fn dispatch_envelope(&self, header: &FastHeader, envelope: &ArkEnvelope) -> Result<DispatchOutcome> {
+        self.dispatch_envelope_from(header, envelope, None)
+    }
+
+    /// Dispatch decoded envelope based on kind with remote socket address propagation
+    pub fn dispatch_envelope_from(
+        &self,
+        header: &FastHeader,
+        envelope: &ArkEnvelope,
+        remote_addr: Option<SocketAddr>,
+    ) -> Result<DispatchOutcome> {
         let kind = get_envelope_kind(envelope);
         let fast_tag = header.fast_tag;
         debug!("Dispatching envelope kind=0x{:08X}, fast_tag=0x{:08X}", kind, fast_tag);
@@ -170,7 +187,34 @@ impl EnvelopeDispatcher {
             || fast_tag == KIND_VPN_DATA
             || fast_tag == KIND_VPN_HANDSHAKE
         {
-            // Ephemeral routing: bypasses storage per Retention Class 0
+            // Ephemeral routing: bypasses StorageEngine disk writes per Retention Class 0
+            if let Some(ref vpn) = self.vpn_engine {
+                if let Some(from_endpoint) = remote_addr {
+                    let local_secs = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                    let packet_timestamp_secs = if envelope.timestamp != 0 {
+                        envelope.timestamp as u64
+                    } else {
+                        local_secs
+                    };
+
+                    let vpn = Arc::clone(vpn);
+                    let payload = envelope.payload.clone();
+                    tokio::spawn(async move {
+                        let _ = vpn
+                            .process_inbound_packet(
+                                &payload,
+                                from_endpoint,
+                                packet_timestamp_secs,
+                                local_secs,
+                            )
+                            .await;
+                    });
+                }
+            }
+            // When VPN is not configured, disabled, or no remote_addr, cleanly discard without error
             return Ok(DispatchOutcome::VpnHandled);
         }
 
