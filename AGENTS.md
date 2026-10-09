@@ -38,3 +38,10 @@ Single-context layout (`GLOSSARY.md` and `docs/adr/` at repo root). See `docs/ag
 ## Phase boundaries
 
 Respect phase boundaries: never edit production code (`crates/`, `src/`, `tests/`) during exploratory, research, grilling, or wayfinding phases. Reserve code changes exclusively for implementation tasks triggered by implementation skills (`/implement-spec`, `/tdd`).
+
+## Branch hygiene
+
+Always prune merged feature branches locally and remotely upon completion of a spec or pull request merge:
+- Prune local: `git branch -d <branch>` (or `-D` if already squashed/rebased).
+- Prune remote: `git push origin --delete <branch>`.
+- Synchronize remotes: `git fetch --prune origin`.
