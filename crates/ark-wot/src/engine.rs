@@ -94,11 +94,7 @@ impl WotEngine {
 
         // CRDT MST ingestion under CRDT_NAMESPACE_WOT
         let envelope = attestation.to_envelope(issuer_pubkey)?;
-        let mut key = Vec::with_capacity(64);
-        key.extend_from_slice(&attestation.issuer_id);
-        key.extend_from_slice(&attestation.subject_id);
-
-        let _ = self.mst_engine.put(CRDT_NAMESPACE_WOT, &key, &envelope);
+        self.sync_mst(&attestation.issuer_id, &attestation.subject_id, &envelope);
         Ok(())
     }
 
@@ -107,11 +103,7 @@ impl WotEngine {
         self.store.save_revocation(&revocation, issuer_pubkey)?;
 
         let envelope = revocation.to_envelope(issuer_pubkey)?;
-        let mut key = Vec::with_capacity(64);
-        key.extend_from_slice(&revocation.issuer_id);
-        key.extend_from_slice(&revocation.subject_id);
-
-        let _ = self.mst_engine.put(CRDT_NAMESPACE_WOT, &key, &envelope);
+        self.sync_mst(&revocation.issuer_id, &revocation.subject_id, &envelope);
         Ok(())
     }
 
@@ -175,10 +167,7 @@ impl WotEngine {
                 self.store.save_attestation(&attestation, issuer_pubkey)?;
 
                 // Synchronize MstEngine under CRDT_NAMESPACE_WOT
-                let mut key = Vec::with_capacity(64);
-                key.extend_from_slice(&attestation.issuer_id);
-                key.extend_from_slice(&attestation.subject_id);
-                let _ = self.mst_engine.put(CRDT_NAMESPACE_WOT, &key, envelope);
+                self.sync_mst(&attestation.issuer_id, &attestation.subject_id, envelope);
 
                 Ok(())
             }
@@ -197,10 +186,7 @@ impl WotEngine {
                 self.store.save_revocation(&revocation, issuer_pubkey)?;
 
                 // Synchronize MstEngine under CRDT_NAMESPACE_WOT
-                let mut key = Vec::with_capacity(64);
-                key.extend_from_slice(&revocation.issuer_id);
-                key.extend_from_slice(&revocation.subject_id);
-                let _ = self.mst_engine.put(CRDT_NAMESPACE_WOT, &key, envelope);
+                self.sync_mst(&revocation.issuer_id, &revocation.subject_id, envelope);
 
                 Ok(())
             }
@@ -211,6 +197,14 @@ impl WotEngine {
                 crate::crypto::KIND_WOT_REVOCATION,
             ))),
         }
+    }
+
+    /// Synchronizes an envelope into the MST under `CRDT_NAMESPACE_WOT` keyed by issuer_id || subject_id.
+    pub fn sync_mst(&self, issuer_id: &[u8; 32], subject_id: &[u8; 32], envelope: &ArkEnvelope) {
+        let mut key = Vec::with_capacity(64);
+        key.extend_from_slice(issuer_id);
+        key.extend_from_slice(subject_id);
+        let _ = self.mst_engine.put(CRDT_NAMESPACE_WOT, &key, envelope);
     }
 
 

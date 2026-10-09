@@ -12,7 +12,7 @@ pub enum ArkRuntimeError {
     Dns(#[from] ark_dns::error::DnsError),
 
     #[error("WoT error: {0}")]
-    Wot(String),
+    Wot(ark_core::error::ArkError),
 
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
