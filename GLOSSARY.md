@@ -48,7 +48,7 @@ A fixed-memory ($\le 24\text{ MB}$) anti-replay structure composed of two genera
 A decentralized, NTP-independent time synchronization mechanism computed in user-space as the median offset across direct peer connections, enforcing a strict maximum drift window of $\pm 30\text{ seconds}$.
 
 ### PmtClock
-The canonical capability trait (`PmtClock`) defined in `ark-time` providing network consensus time (`now_pmt() -> u64`) to protocol subsystems (WoT, PaaS cron, DNS lease lifecycles), with standard adapters `SystemPmtClock` and `MockPmtClock`.
+The canonical capability trait (`PmtClock`) defined in `ark-time` providing network consensus time (`now_pmt() -> u64`) across all protocol subsystems (WoT, PaaS cron, DNS lease lifecycles), with standard adapters `SystemPmtClock` and `MockPmtClock`. Eliminates fragmented subsystem-specific wrappers (such as legacy `TimeProvider` or `InMemoryPmtClock`). Subsystems store clocks as erased trait objects (`Arc<dyn PmtClock>`) to avoid generic parameter pollution.
 
 
 ## Persistence & Storage Engine (GCP-06)
@@ -168,6 +168,12 @@ A cryptographic connection migration mechanism updating a peer's physical socket
 ### Sovereign Relay Fallback (DERP-style)
 A zero-trust, end-to-end encrypted packet relaying mechanism used when direct UDP hole-punching / ICE traversal fails across symmetric NAT or firewall boundaries, allowing traffic forwarding via authenticated Homelab guardians without exposing plaintext.
 
+### VpnTransportSink
+An abstract capability trait at the outbound network seam of the VPN engine that receives encapsulated `OutboundPacket` messages and dispatches them across the physical network, satisfied by in-memory channel queues for tests or QUIC sockets in daemon runtimes.
+
+### Duplex Mesh Pipeline
+The symmetrical packet processing pipeline coordinating Layer-3 TUN packet reads, deterministic IPAM routing, zero-trust ACL evaluation, post-quantum encapsulation, and wire network transmission alongside incoming wire decryption and TUN injection behind a unified lifecycle facade.
+
 ## Web-of-Trust Sybil Resistance & Reputation (ACP-04)
 
 ### Local Trust Graph
@@ -188,7 +194,13 @@ An instantaneous, prioritized cryptographic invalidation (`KIND_WOT_REVOCATION =
 ### Trust Tier
 A discrete classification (`CorePeer`, `Trusted`, `Probationary`, `Untrusted`) derived from the numerical trust score and path distance, utilized across protocol layers (`ark-vpn`, `ark-blob`, `ark-dns`, `ark-paas`) to enforce rate limits, admission quotas, bandwidth prioritization, and zero-trust ACL defaults.
 
-## Node Runtime & Subsystem Orchestration (ADR-0015)
+### WotStore
+The durable persistence and consistency manager for Web-of-Trust data, coordinating local Fjall LSM keyspaces (`wot_attestations`, `wot_revocations`), in-memory Personalized PageRank (PPR) graph evaluation, lock-free DashMap score caches, and internalized Merkle Search Tree (MST) CRDT anti-entropy synchronization under namespace `ark/wot/v1`.
+
+### Anti-Entropy CRDT Synchronization
+The deterministic state reconciliation protocol between peer nodes using Merkle Search Trees (MST) under namespace `ark/wot/v1`, ensuring eventual consistency of trust attestations and active revocations without global consensus coordinators.
+
+## Node Runtime & Subsystem Orchestration (ADR-0015, ADR-0017)
 
 ### NodeRuntime
 The unified runtime facade and orchestration core (`crates/ark-runtime`) of an ARK sovereign daemon. Encapsulates socket lifecycle, QUIC connection pooling under ALPN `ark-pqc/v1`, wire-speed packet demultiplexing, background task supervision with `CancellationToken` and `JoinSet`, and deterministic routing across all protocol subsystem engines.
@@ -198,3 +210,10 @@ An asynchronous, thread-safe handle returned upon spawning a `NodeRuntime`. Expo
 
 ### EnvelopeDispatcher
 The internal demultiplexing and dispatch router of `NodeRuntime`. Inspects incoming `FastHeader` attributes, envelope `kind` identifiers, and core tag masks to synchronously and safely direct decoded `ArkEnvelope` messages to their target subsystem engines (Storage, CRDT MST, DNS, Blob, PaaS, VPN, WoT) under strict peripheral fault isolation.
+
+### Subsystem Ingress Seam
+The architectural boundary across which decoded protocol containers enter an autonomous subsystem engine for domain validation and state transition. Isolates transport-level wire demultiplexing from internal subsystem semantics.
+
+### Envelope Ingestion
+The multi-phase admission procedure wherein an incoming protocol envelope undergoes cryptographic and anti-Sybil validation prior to state transition or persistent storage. Prevents malformed, unverified, or fraudulent envelopes from polluting node state or durable storage.
+
