@@ -129,8 +129,12 @@ impl WotStore {
 
         // Also store canonical ArkEnvelope in ark-storage for retention classes and sync
         let envelope = attestation.to_envelope(issuer_pubkey)?;
-        let _ = self.storage.put_envelope(&envelope);
-        let _ = self.mst_engine.put(CRDT_NAMESPACE_WOT, &key, &envelope);
+        self.storage
+            .put_envelope(&envelope)
+            .map_err(|e| ArkError::Internal(e.to_string()))?;
+        self.mst_engine
+            .put(CRDT_NAMESPACE_WOT, &key, &envelope)
+            .map_err(|e| ArkError::Internal(e.to_string()))?;
 
         // Incremental graph update
         if !self.validator.is_revoked(&attestation.issuer_id, &attestation.subject_id) {
@@ -158,8 +162,12 @@ impl WotStore {
         self.validator.record_revocation(revocation.clone());
 
         let envelope = revocation.to_envelope(issuer_pubkey)?;
-        let _ = self.storage.put_envelope(&envelope);
-        let _ = self.mst_engine.put(CRDT_NAMESPACE_WOT, &key, &envelope);
+        self.storage
+            .put_envelope(&envelope)
+            .map_err(|e| ArkError::Internal(e.to_string()))?;
+        self.mst_engine
+            .put(CRDT_NAMESPACE_WOT, &key, &envelope)
+            .map_err(|e| ArkError::Internal(e.to_string()))?;
 
         // Immediate edge truncation in trust graph
         let mut g = self.graph.write();

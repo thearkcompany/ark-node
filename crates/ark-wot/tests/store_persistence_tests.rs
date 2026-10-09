@@ -104,11 +104,7 @@ fn test_wot_store_internalized_mst_and_single_pass_persistence() {
 
     store.save_attestation(&attestation, &local_key.public_key).unwrap();
 
-    // Verify presence in MstEngine under CRDT_NAMESPACE_WOT with key [issuer: 32B] || [subject: 32B]
-    let mut compound_key = Vec::with_capacity(64);
-    compound_key.extend_from_slice(&local_id);
-    compound_key.extend_from_slice(&peer_id);
-
+    let compound_key = WotStore::make_relation_key(&local_id, &peer_id);
     let fetched_env = mst_engine.get(CRDT_NAMESPACE_WOT, &compound_key).unwrap();
     assert!(fetched_env.is_some(), "Attestation envelope must be indexed in MstEngine");
 
@@ -213,9 +209,7 @@ fn test_wot_store_ingest_crdt_envelope_and_adversarial_rejection() {
     assert_eq!(eval.tier, TrustTier::Trusted);
 
     // Indexed in MST
-    let mut compound_key = Vec::with_capacity(64);
-    compound_key.extend_from_slice(&local_id);
-    compound_key.extend_from_slice(&peer_id);
+    let compound_key = WotStore::make_relation_key(&local_id, &peer_id);
     let in_mst = store.mst_engine().get(ark_wot::CRDT_NAMESPACE_WOT, &compound_key).unwrap();
     assert!(in_mst.is_some(), "Must be indexed in MST");
 
