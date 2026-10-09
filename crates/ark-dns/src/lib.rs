@@ -25,8 +25,8 @@ pub use crypto_name::{
 pub use engine::{DnsPacketHandler, SovereignDnsEngine, SovereignDnsEngineBuilder};
 pub use error::{DnsError, Result};
 pub use lifecycle::{
-    DomainLeaseState, LeaseLifecycleEngine, MockTimeProvider, SystemTimeProvider, TimeProvider,
-    GRACE_PERIOD_SECS, MAX_LEASE_DURATION_SECS,
+    DomainLeaseState, LeaseLifecycleEngine, MockPmtClock, MockTimeProvider, PmtClock,
+    SystemPmtClock, SystemTimeProvider, GRACE_PERIOD_SECS, MAX_LEASE_DURATION_SECS,
 };
 pub use overlay::{OverlayRecord, PrivateOverlayStore, DNS_PRIVATE_OVERLAYS_KEYSPACE};
 pub use record::DomainRoutingRecord;

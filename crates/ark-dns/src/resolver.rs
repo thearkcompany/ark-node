@@ -16,10 +16,8 @@ use tokio::net::UdpSocket;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 
-use crate::anti_sybil::L2ContractVerifier;
 use crate::engine::SovereignDnsEngine;
 use crate::error::{DnsError, Result};
-use crate::lifecycle::TimeProvider;
 use crate::synthesis::synthesize_dns_answers;
 use crate::wire::{DnsMessage, DnsOpcode, DnsRcode};
 
@@ -50,17 +48,17 @@ impl Default for StubResolverConfig {
 }
 
 /// Asynchronous Tokio UDP DNS stub resolver.
-pub struct StubResolver<T: TimeProvider + 'static, V: L2ContractVerifier + 'static> {
-    engine: Arc<SovereignDnsEngine<T, V>>,
+pub struct StubResolver {
+    engine: Arc<SovereignDnsEngine>,
     config: StubResolverConfig,
     socket: Arc<UdpSocket>,
     forwarder_socket: Option<Arc<UdpSocket>>,
 }
 
-impl<T: TimeProvider, V: L2ContractVerifier> StubResolver<T, V> {
+impl StubResolver {
     /// Bind UDP socket and construct a new `StubResolver`.
     pub async fn new(
-        engine: Arc<SovereignDnsEngine<T, V>>,
+        engine: Arc<SovereignDnsEngine>,
         config: StubResolverConfig,
     ) -> Result<Self> {
         let socket = UdpSocket::bind(config.bind_addr)

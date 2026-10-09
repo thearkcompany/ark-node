@@ -14,7 +14,7 @@ use prost::Message;
 use crate::anti_sybil::{validate_dns_claim, L2ContractVerifier};
 use crate::crypto_name::{is_cryptographic_name, parse_cryptographic_name};
 use crate::error::{DnsError, Result};
-use crate::lifecycle::{LeaseLifecycleEngine, SystemTimeProvider, TimeProvider};
+use crate::lifecycle::{LeaseLifecycleEngine, SystemPmtClock, PmtClock};
 use crate::overlay::{OverlayRecord, PrivateOverlayStore};
 use crate::record::DomainRoutingRecord;
 use crate::SovereignDnsTrie;
@@ -27,16 +27,16 @@ pub trait DnsPacketHandler {
 
 /// Unified Sovereign DNS Engine facade.
 #[derive(Clone)]
-pub struct SovereignDnsEngine<T: TimeProvider = SystemTimeProvider, V: L2ContractVerifier = Arc<dyn L2ContractVerifier>> {
+pub struct SovereignDnsEngine {
     overlay_store: Arc<PrivateOverlayStore>,
-    lifecycle_engine: LeaseLifecycleEngine<T>,
-    l2_verifier: Arc<V>,
+    lifecycle_engine: LeaseLifecycleEngine,
+    l2_verifier: Arc<dyn L2ContractVerifier>,
     default_caller_ark_id: Option<[u8; 32]>,
 }
 
-impl<T: TimeProvider, V: L2ContractVerifier> SovereignDnsEngine<T, V> {
+impl SovereignDnsEngine {
     /// Return a builder to configure the engine.
-    pub fn builder() -> SovereignDnsEngineBuilder<T, V> {
+    pub fn builder() -> SovereignDnsEngineBuilder {
         SovereignDnsEngineBuilder::new()
     }
 
@@ -46,7 +46,7 @@ impl<T: TimeProvider, V: L2ContractVerifier> SovereignDnsEngine<T, V> {
     }
 
     /// Access reference to underlying `LeaseLifecycleEngine`.
-    pub fn lifecycle_engine(&self) -> &LeaseLifecycleEngine<T> {
+    pub fn lifecycle_engine(&self) -> &LeaseLifecycleEngine {
         &self.lifecycle_engine
     }
 
@@ -75,7 +75,7 @@ impl<T: TimeProvider, V: L2ContractVerifier> SovereignDnsEngine<T, V> {
         // 1. Tier 1: Cryptographic names (ark1<bech32>.ark)
         if is_cryptographic_name(trimmed) {
             let identity_hash = parse_cryptographic_name(trimmed)?;
-            let epoch_now = self.lifecycle_engine.time_provider().now_secs();
+            let epoch_now = self.lifecycle_engine.clock().now_pmt();
             let mut owner_key = [0u8; 16];
             owner_key.copy_from_slice(&identity_hash[..16]);
 
@@ -95,7 +95,7 @@ impl<T: TimeProvider, V: L2ContractVerifier> SovereignDnsEngine<T, V> {
         let effective_caller = caller_ark_id.or(self.default_caller_ark_id.as_ref());
         if let Some(caller) = effective_caller {
             if let Some(overlay) = self.overlay_store.get_overlay(caller, trimmed)? {
-                let epoch_now = self.lifecycle_engine.time_provider().now_secs();
+                let epoch_now = self.lifecycle_engine.clock().now_pmt();
                 let mut owner_key = [0u8; 16];
                 owner_key.copy_from_slice(&caller[..16]);
 
@@ -246,7 +246,7 @@ impl<T: TimeProvider, V: L2ContractVerifier> SovereignDnsEngine<T, V> {
     }
 }
 
-impl<T: TimeProvider, V: L2ContractVerifier> DnsPacketHandler for SovereignDnsEngine<T, V> {
+impl DnsPacketHandler for SovereignDnsEngine {
     fn handle_dns_query_packet(&self, fqdn: &str, caller_ark_id: Option<&[u8; 32]>) -> Result<Vec<u8>> {
         let response = self.resolve(fqdn, caller_ark_id)?;
         Ok(response.encode_to_vec())
@@ -254,28 +254,28 @@ impl<T: TimeProvider, V: L2ContractVerifier> DnsPacketHandler for SovereignDnsEn
 }
 
 /// Builder for `SovereignDnsEngine`.
-pub struct SovereignDnsEngineBuilder<T: TimeProvider, V: L2ContractVerifier> {
+pub struct SovereignDnsEngineBuilder {
     storage_engine: Option<StorageEngine>,
     overlay_store: Option<Arc<PrivateOverlayStore>>,
     trie: Option<Arc<SovereignDnsTrie>>,
-    time_provider: Option<Arc<T>>,
-    l2_verifier: Option<Arc<V>>,
+    clock: Option<Arc<dyn PmtClock>>,
+    l2_verifier: Option<Arc<dyn L2ContractVerifier>>,
     default_caller_ark_id: Option<[u8; 32]>,
 }
 
-impl<T: TimeProvider, V: L2ContractVerifier> Default for SovereignDnsEngineBuilder<T, V> {
+impl Default for SovereignDnsEngineBuilder {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: TimeProvider, V: L2ContractVerifier> SovereignDnsEngineBuilder<T, V> {
+impl SovereignDnsEngineBuilder {
     pub fn new() -> Self {
         Self {
             storage_engine: None,
             overlay_store: None,
             trie: None,
-            time_provider: None,
+            clock: None,
             l2_verifier: None,
             default_caller_ark_id: None,
         }
@@ -296,12 +296,17 @@ impl<T: TimeProvider, V: L2ContractVerifier> SovereignDnsEngineBuilder<T, V> {
         self
     }
 
-    pub fn time_provider(mut self, time_provider: Arc<T>) -> Self {
-        self.time_provider = Some(time_provider);
+    pub fn clock(mut self, clock: Arc<dyn PmtClock>) -> Self {
+        self.clock = Some(clock);
         self
     }
 
-    pub fn l2_verifier(mut self, l2_verifier: Arc<V>) -> Self {
+    pub fn time_provider(mut self, time_provider: Arc<dyn PmtClock>) -> Self {
+        self.clock = Some(time_provider);
+        self
+    }
+
+    pub fn l2_verifier(mut self, l2_verifier: Arc<dyn L2ContractVerifier>) -> Self {
         self.l2_verifier = Some(l2_verifier);
         self
     }
@@ -311,7 +316,7 @@ impl<T: TimeProvider, V: L2ContractVerifier> SovereignDnsEngineBuilder<T, V> {
         self
     }
 
-    pub fn build(self) -> Result<SovereignDnsEngine<T, V>> {
+    pub fn build(self) -> Result<SovereignDnsEngine> {
         let overlay_store = match (self.overlay_store, self.storage_engine) {
             (Some(store), _) => store,
             (None, Some(storage)) => Arc::new(PrivateOverlayStore::new(&storage)?),
@@ -324,15 +329,15 @@ impl<T: TimeProvider, V: L2ContractVerifier> SovereignDnsEngineBuilder<T, V> {
 
         let trie = self.trie.unwrap_or_else(|| Arc::new(SovereignDnsTrie::new()));
 
-        let time_provider = self.time_provider.ok_or_else(|| {
-            DnsError::InvalidRecord("TimeProvider must be provided to SovereignDnsEngineBuilder".to_string())
-        })?;
+        let clock = self
+            .clock
+            .unwrap_or_else(|| Arc::new(SystemPmtClock::default()));
 
         let l2_verifier = self.l2_verifier.ok_or_else(|| {
             DnsError::InvalidRecord("L2ContractVerifier must be provided to SovereignDnsEngineBuilder".to_string())
         })?;
 
-        let lifecycle_engine = LeaseLifecycleEngine::with_time_provider(trie, time_provider);
+        let lifecycle_engine = LeaseLifecycleEngine::with_clock(trie, clock);
 
         Ok(SovereignDnsEngine {
             overlay_store,

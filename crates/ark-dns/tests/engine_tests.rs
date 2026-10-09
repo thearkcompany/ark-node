@@ -10,8 +10,10 @@ use ark_dns::anti_sybil::{
 use ark_dns::crypto_name::format_cryptographic_name_from_hash;
 use ark_dns::engine::{DnsPacketHandler, SovereignDnsEngine};
 use ark_dns::error::DnsError;
-use ark_dns::lifecycle::{MockTimeProvider, TimeProvider};
+use ark_dns::lifecycle::{MockPmtClock, PmtClock};
 use ark_dns::overlay::OverlayRecord;
+
+
 use ark_dns::record::DomainRoutingRecord;
 use ark_protocol::envelope::ArkEnvelope;
 use ark_protocol::proto::DomainResolveResponse;
@@ -103,7 +105,7 @@ fn create_valid_claim_envelope(
 fn test_tier1_cryptographic_name_resolution() {
     let dir = tempdir().unwrap();
     let storage = StorageEngine::open(dir.path(), StorageConfig::frugal()).unwrap();
-    let clock = Arc::new(MockTimeProvider::new(1_000_000));
+    let clock = Arc::new(MockPmtClock::new(1_000_000));
     let verifier = Arc::new(TestL2Verifier::new());
 
     let engine = SovereignDnsEngine::builder()
@@ -128,7 +130,7 @@ fn test_tier1_cryptographic_name_resolution() {
 fn test_tier2_private_overlay_resolution() {
     let dir = tempdir().unwrap();
     let storage = StorageEngine::open(dir.path(), StorageConfig::frugal()).unwrap();
-    let clock = Arc::new(MockTimeProvider::new(1_000_000));
+    let clock = Arc::new(MockPmtClock::new(1_000_000));
     let verifier = Arc::new(TestL2Verifier::new());
 
     let engine = SovereignDnsEngine::builder()
@@ -172,7 +174,7 @@ fn test_tier2_private_overlay_resolution() {
 fn test_tier3_public_patricia_trie_resolution_and_merkle_proof() {
     let dir = tempdir().unwrap();
     let storage = StorageEngine::open(dir.path(), StorageConfig::frugal()).unwrap();
-    let clock = Arc::new(MockTimeProvider::new(1_000_000));
+    let clock = Arc::new(MockPmtClock::new(1_000_000));
     let owner_a = [0x55u8; 16];
     let contract = b"escrow-bond-001";
     let verifier = Arc::new(TestL2Verifier::new().allow(contract, &owner_a));
@@ -230,7 +232,7 @@ fn test_tier3_public_patricia_trie_resolution_and_merkle_proof() {
 fn test_tier_precedence_overlay_over_public() {
     let dir = tempdir().unwrap();
     let storage = StorageEngine::open(dir.path(), StorageConfig::frugal()).unwrap();
-    let clock = Arc::new(MockTimeProvider::new(1_000_000));
+    let clock = Arc::new(MockPmtClock::new(1_000_000));
     let owner_a = [0x55u8; 16];
     let contract = b"escrow-bond-002";
     let verifier = Arc::new(TestL2Verifier::new().allow(contract, &owner_a));
@@ -281,7 +283,7 @@ fn test_tier_precedence_overlay_over_public() {
 fn test_grace_period_and_renewal_workflow() {
     let dir = tempdir().unwrap();
     let storage = StorageEngine::open(dir.path(), StorageConfig::frugal()).unwrap();
-    let clock = Arc::new(MockTimeProvider::new(1_000_000));
+    let clock = Arc::new(MockPmtClock::new(1_000_000));
     let owner_a = [0x12u8; 16];
     let owner_b = [0x34u8; 16];
     let contract_a = b"contract-a";
@@ -321,7 +323,7 @@ fn test_grace_period_and_renewal_workflow() {
     // Unauthorized renewal attempt by Owner B during grace period
     let env_b = create_valid_claim_envelope(
         "renewme.ark",
-        clock.now_secs() + 86400 * 30,
+        clock.now_pmt() + 86400 * 30,
         contract_b,
         owner_b,
         [2u8; 32],
@@ -334,7 +336,7 @@ fn test_grace_period_and_renewal_workflow() {
     // Authorized renewal by Owner A
     let env_renew_a = create_valid_claim_envelope(
         "renewme.ark",
-        clock.now_secs() + 86400 * 30,
+        clock.now_pmt() + 86400 * 30,
         contract_a,
         owner_a,
         [1u8; 32],
@@ -352,7 +354,7 @@ fn test_grace_period_and_renewal_workflow() {
 fn test_eviction_and_reregistration() {
     let dir = tempdir().unwrap();
     let storage = StorageEngine::open(dir.path(), StorageConfig::frugal()).unwrap();
-    let clock = Arc::new(MockTimeProvider::new(1_000_000));
+    let clock = Arc::new(MockPmtClock::new(1_000_000));
     let owner_a = [0x12u8; 16];
     let owner_b = [0x34u8; 16];
     let contract_a = b"contract-a";
@@ -396,7 +398,7 @@ fn test_eviction_and_reregistration() {
     // Owner B can now register fresh claim
     let env_b = create_valid_claim_envelope(
         "expireme.ark",
-        clock.now_secs() + 86400 * 30,
+        clock.now_pmt() + 86400 * 30,
         contract_b,
         owner_b,
         [2u8; 32],
@@ -413,7 +415,7 @@ fn test_eviction_and_reregistration() {
 fn test_protobuf_wire_serialization_and_packet_handler() {
     let dir = tempdir().unwrap();
     let storage = StorageEngine::open(dir.path(), StorageConfig::frugal()).unwrap();
-    let clock = Arc::new(MockTimeProvider::new(1_000_000));
+    let clock = Arc::new(MockPmtClock::new(1_000_000));
     let verifier = Arc::new(TestL2Verifier::new());
 
     let engine = SovereignDnsEngine::builder()
@@ -443,7 +445,7 @@ fn test_concurrent_three_tier_resolution_workflows() {
 
     let dir = tempdir().unwrap();
     let storage = StorageEngine::open(dir.path(), StorageConfig::frugal()).unwrap();
-    let clock = Arc::new(MockTimeProvider::new(1_000_000));
+    let clock = Arc::new(MockPmtClock::new(1_000_000));
     let verifier = Arc::new(TestL2Verifier::new());
 
     let caller_ark_id = [0x77u8; 32];
@@ -549,7 +551,7 @@ fn test_concurrent_three_tier_resolution_workflows() {
 fn test_private_overlay_crud_facade() {
     let dir = tempdir().unwrap();
     let storage = StorageEngine::open(dir.path(), StorageConfig::frugal()).unwrap();
-    let clock = Arc::new(MockTimeProvider::new(1_000_000));
+    let clock = Arc::new(MockPmtClock::new(1_000_000));
     let verifier = Arc::new(TestL2Verifier::new());
 
     let engine = SovereignDnsEngine::builder()
@@ -591,4 +593,39 @@ fn test_private_overlay_crud_facade() {
     assert!(engine.get_private_overlay(&owner, "app1.ark").unwrap().is_none());
     assert!(!engine.remove_private_overlay(&owner, "app1.ark").unwrap());
 }
+
+#[test]
+fn test_builder_defaults_and_validation() {
+    let dir = tempdir().unwrap();
+    let storage = StorageEngine::open(dir.path().join("s1"), StorageConfig::frugal()).unwrap();
+    let verifier = Arc::new(TestL2Verifier::new());
+
+    // Omitting clock uses default SystemPmtClock
+    let engine = SovereignDnsEngine::builder()
+        .storage(storage)
+        .l2_verifier(verifier)
+        .build()
+        .expect("builder should supply SystemPmtClock by default");
+
+    assert!(engine.lifecycle_engine().clock().now_pmt() > 0);
+
+    // Missing l2_verifier returns Err(DnsError::InvalidRecord)
+    let storage2 = StorageEngine::open(dir.path().join("s2"), StorageConfig::frugal()).unwrap();
+    let res = SovereignDnsEngine::builder()
+        .storage(storage2)
+        .build();
+
+    let err = match res {
+        Ok(_) => panic!("builder must fail when l2_verifier is omitted"),
+        Err(e) => e,
+    };
+
+    match err {
+        DnsError::InvalidRecord(msg) => {
+            assert!(msg.contains("L2ContractVerifier must be provided"));
+        }
+        other => panic!("expected InvalidRecord, got {:?}", other),
+    }
+}
+
 

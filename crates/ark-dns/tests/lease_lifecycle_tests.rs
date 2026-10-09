@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use ark_dns::error::DnsError;
 use ark_dns::lifecycle::{
-    DomainLeaseState, LeaseLifecycleEngine, MockTimeProvider, TimeProvider,
+    DomainLeaseState, LeaseLifecycleEngine, MockPmtClock, PmtClock,
     GRACE_PERIOD_SECS, MAX_LEASE_DURATION_SECS,
 };
 use ark_dns::record::DomainRoutingRecord;
@@ -22,7 +22,7 @@ fn sample_record(fqdn: &str, owner_key_id: [u8; 16], registered_at: u64, expires
 
 #[test]
 fn test_state_machine_transitions() {
-    let clock = Arc::new(MockTimeProvider::new(1_000_000));
+    let clock = Arc::new(MockPmtClock::new(1_000_000));
     let trie = Arc::new(SovereignDnsTrie::new());
     let engine = LeaseLifecycleEngine::with_time_provider(trie.clone(), clock.clone());
 
@@ -72,7 +72,7 @@ fn test_state_machine_transitions() {
 
 #[test]
 fn test_grace_period_monopoly_enforcement() {
-    let clock = Arc::new(MockTimeProvider::new(1_000_000));
+    let clock = Arc::new(MockPmtClock::new(1_000_000));
     let trie = Arc::new(SovereignDnsTrie::new());
     let engine = LeaseLifecycleEngine::with_time_provider(trie.clone(), clock.clone());
 
@@ -89,8 +89,8 @@ fn test_grace_period_monopoly_enforcement() {
     assert_eq!(engine.state_of("alice.ark"), Some(DomainLeaseState::GracePeriod));
 
     // Owner B attempts renewal during grace period -> Rejected!
-    let new_expires_at = clock.now_secs() + 86400 * 30;
-    let renewal_b = sample_record("alice.ark", owner_b, clock.now_secs(), new_expires_at);
+    let new_expires_at = clock.now_pmt() + 86400 * 30;
+    let renewal_b = sample_record("alice.ark", owner_b, clock.now_pmt(), new_expires_at);
     let err = engine.renew(renewal_b).expect_err("should reject renewal by non-owner");
     match err {
         DnsError::GracePeriodRenewalUnauthorized { fqdn, current_owner, attempted_by } => {
@@ -102,7 +102,7 @@ fn test_grace_period_monopoly_enforcement() {
     }
 
     // Owner A attempts renewal during grace period -> Accepted!
-    let renewal_a = sample_record("alice.ark", owner_a, clock.now_secs(), new_expires_at);
+    let renewal_a = sample_record("alice.ark", owner_a, clock.now_pmt(), new_expires_at);
     engine.renew(renewal_a).expect("owner renewal must succeed");
 
     // After renewal, domain is back to Active and in_grace_period = false
@@ -114,7 +114,7 @@ fn test_grace_period_monopoly_enforcement() {
 
 #[test]
 fn test_early_renewal_by_owner() {
-    let clock = Arc::new(MockTimeProvider::new(1_000_000));
+    let clock = Arc::new(MockPmtClock::new(1_000_000));
     let trie = Arc::new(SovereignDnsTrie::new());
     let engine = LeaseLifecycleEngine::with_time_provider(trie.clone(), clock.clone());
 
@@ -129,7 +129,7 @@ fn test_early_renewal_by_owner() {
     clock.set_time(registered_at + 10 * 86400);
 
     // Attempted renewal by owner B during Active state should also be rejected
-    let renewal_b = sample_record("alice.ark", owner_b, clock.now_secs(), clock.now_secs() + 86400 * 30);
+    let renewal_b = sample_record("alice.ark", owner_b, clock.now_pmt(), clock.now_pmt() + 86400 * 30);
     let err = engine.renew(renewal_b).expect_err("non-owner cannot renew active domain");
     match err {
         DnsError::UnauthorizedRenewal { fqdn, current_owner, attempted_by } => {
@@ -141,14 +141,14 @@ fn test_early_renewal_by_owner() {
     }
 
     // Owner A renews early
-    let renewal_a = sample_record("alice.ark", owner_a, clock.now_secs(), clock.now_secs() + 86400 * 60);
+    let renewal_a = sample_record("alice.ark", owner_a, clock.now_pmt(), clock.now_pmt() + 86400 * 60);
     engine.renew(renewal_a).expect("owner can renew early");
     assert_eq!(engine.state_of("alice.ark"), Some(DomainLeaseState::Active));
 }
 
 #[test]
 fn test_post_grace_eviction_and_new_owner_registration() {
-    let clock = Arc::new(MockTimeProvider::new(1_000_000));
+    let clock = Arc::new(MockPmtClock::new(1_000_000));
     let trie = Arc::new(SovereignDnsTrie::new());
     let engine = LeaseLifecycleEngine::with_time_provider(trie.clone(), clock.clone());
 
@@ -164,7 +164,7 @@ fn test_post_grace_eviction_and_new_owner_registration() {
     assert_eq!(engine.state_of("alice.ark"), Some(DomainLeaseState::Expired));
 
     // Try to register "alice.ark" with new owner B
-    let reg_b = sample_record("alice.ark", owner_b, clock.now_secs(), clock.now_secs() + 86400 * 30);
+    let reg_b = sample_record("alice.ark", owner_b, clock.now_pmt(), clock.now_pmt() + 86400 * 30);
     engine.register(reg_b).expect("new owner should be able to register expired domain");
 
     assert_eq!(engine.state_of("alice.ark"), Some(DomainLeaseState::Active));
@@ -175,7 +175,7 @@ fn test_post_grace_eviction_and_new_owner_registration() {
 
 #[test]
 fn test_evict_expired_sweep() {
-    let clock = Arc::new(MockTimeProvider::new(1_000_000));
+    let clock = Arc::new(MockPmtClock::new(1_000_000));
     let trie = Arc::new(SovereignDnsTrie::new());
     let engine = LeaseLifecycleEngine::with_time_provider(trie.clone(), clock.clone());
 
@@ -206,7 +206,7 @@ fn test_evict_expired_sweep() {
 
 #[test]
 fn test_lease_duration_bounds() {
-    let clock = Arc::new(MockTimeProvider::new(1_000_000));
+    let clock = Arc::new(MockPmtClock::new(1_000_000));
     let trie = Arc::new(SovereignDnsTrie::new());
     let engine = LeaseLifecycleEngine::with_time_provider(trie.clone(), clock.clone());
 
@@ -233,7 +233,7 @@ fn test_lease_duration_bounds() {
 fn test_register_from_validated_claim() {
     use ark_dns::anti_sybil::ValidatedDnsClaim;
 
-    let clock = Arc::new(MockTimeProvider::new(1_000_000));
+    let clock = Arc::new(MockPmtClock::new(1_000_000));
     let trie = Arc::new(SovereignDnsTrie::new());
     let engine = LeaseLifecycleEngine::with_time_provider(trie.clone(), clock.clone());
 
@@ -271,7 +271,7 @@ fn test_register_from_validated_claim() {
     // Renew via renew_claim with owner 5
     let renew_claim = ValidatedDnsClaim {
         fqdn: "carol.ark".to_string(),
-        lease_epoch: clock.now_secs() + 86400 * 30,
+        lease_epoch: clock.now_pmt() + 86400 * 30,
         contract_id: vec![0x33, 0x44],
         owner_key_id: [5u8; 16],
         envelope_id: [0u8; 32],
