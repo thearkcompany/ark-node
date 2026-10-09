@@ -1,13 +1,14 @@
-use std::sync::Arc;
-use std::time::Duration;
 use ark_paas::queue::{ArkQueue, QueueConfig, Task, TaskStatus};
 use ark_storage::{StorageConfig, StorageEngine};
+use std::sync::Arc;
+use std::time::Duration;
 use tempfile::tempdir;
 
 #[test]
 fn test_task_enqueue_and_class1_durability() {
     let dir = tempdir().expect("tempdir");
-    let storage = Arc::new(StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("open storage"));
+    let storage =
+        Arc::new(StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("open storage"));
     let queue = ArkQueue::open(storage.clone(), QueueConfig::default()).expect("open queue");
 
     let task = Task::new("task-1", 1, b"execute compute 1".to_vec());
@@ -15,7 +16,10 @@ fn test_task_enqueue_and_class1_durability() {
     assert_eq!(task_id, "task-1");
 
     // Must be dispatched
-    let lease = queue.dispatch().expect("dispatch").expect("job lease granted");
+    let lease = queue
+        .dispatch()
+        .expect("dispatch")
+        .expect("job lease granted");
     assert_eq!(lease.task().id, "task-1");
     assert_eq!(lease.task().payload, b"execute compute 1");
     assert_eq!(lease.task().status, TaskStatus::Dispatched);
@@ -24,12 +28,17 @@ fn test_task_enqueue_and_class1_durability() {
 #[test]
 fn test_in_memory_ack_elision_happy_path() {
     let dir = tempdir().expect("tempdir");
-    let storage = Arc::new(StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("open storage"));
-    let queue = ArkQueue::open(storage.clone(), QueueConfig {
-        lease_duration: Duration::from_secs(5),
-        max_attempts: 3,
-        keyspace_name: "paas_queue_tasks".to_string(),
-    }).expect("open queue");
+    let storage =
+        Arc::new(StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("open storage"));
+    let queue = ArkQueue::open(
+        storage.clone(),
+        QueueConfig {
+            lease_duration: Duration::from_secs(5),
+            max_attempts: 3,
+            keyspace_name: "paas_queue_tasks".to_string(),
+        },
+    )
+    .expect("open queue");
 
     let task = Task::new("task-elide-1", 1, b"compute fast".to_vec());
     queue.enqueue(task).expect("enqueue task");
@@ -57,7 +66,8 @@ fn test_in_memory_ack_elision_happy_path() {
 #[test]
 fn test_bivariate_lww_conflict_resolution() {
     let dir = tempdir().expect("tempdir");
-    let storage = Arc::new(StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("open storage"));
+    let storage =
+        Arc::new(StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("open storage"));
     let queue = ArkQueue::open(storage.clone(), QueueConfig::default()).expect("open queue");
 
     // Case 1: Higher Lamport clock wins regardless of arrival order
@@ -92,13 +102,18 @@ fn test_bivariate_lww_conflict_resolution() {
 #[test]
 fn test_lease_timeout_and_dlq_routing() {
     let dir = tempdir().expect("tempdir");
-    let storage = Arc::new(StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("open storage"));
+    let storage =
+        Arc::new(StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("open storage"));
     // Short lease: 50 milliseconds
-    let queue = ArkQueue::open(storage.clone(), QueueConfig {
-        lease_duration: Duration::from_millis(50),
-        max_attempts: 3,
-        keyspace_name: "paas_queue_tasks".to_string(),
-    }).expect("open queue");
+    let queue = ArkQueue::open(
+        storage.clone(),
+        QueueConfig {
+            lease_duration: Duration::from_millis(50),
+            max_attempts: 3,
+            keyspace_name: "paas_queue_tasks".to_string(),
+        },
+    )
+    .expect("open queue");
 
     let task = Task::new("retry-job", 1, b"flaky task".to_vec());
     queue.enqueue(task).expect("enqueue");
@@ -128,7 +143,10 @@ fn test_lease_timeout_and_dlq_routing() {
     assert_eq!(timed_out_count3, 1);
 
     // After 3 failed attempts, task must be routed to Dead-Letter Queue (DLQ)
-    assert!(queue.dispatch().expect("no more tasks in main queue").is_none());
+    assert!(queue
+        .dispatch()
+        .expect("no more tasks in main queue")
+        .is_none());
     assert_eq!(queue.dlq_len(), 1);
 
     let dlq_task = queue.pop_dlq().expect("dlq task present");
@@ -143,11 +161,17 @@ fn test_crash_recovery_rehydration() {
 
     // Phase 1: Open queue, enqueue 2 tasks, dispatch 1 but do not ack (simulating crash)
     {
-        let storage = Arc::new(StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("open storage"));
+        let storage = Arc::new(
+            StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("open storage"),
+        );
         let queue = ArkQueue::open(storage.clone(), QueueConfig::default()).expect("open queue");
 
-        queue.enqueue(Task::new("job-crash-1", 100, b"task 1".to_vec())).expect("enqueue 1");
-        queue.enqueue(Task::new("job-crash-2", 200, b"task 2".to_vec())).expect("enqueue 2");
+        queue
+            .enqueue(Task::new("job-crash-1", 100, b"task 1".to_vec()))
+            .expect("enqueue 1");
+        queue
+            .enqueue(Task::new("job-crash-2", 200, b"task 2".to_vec()))
+            .expect("enqueue 2");
 
         let lease = queue.dispatch().expect("dispatch").expect("lease");
         assert_eq!(lease.task().id, "job-crash-1");
@@ -156,7 +180,9 @@ fn test_crash_recovery_rehydration() {
 
     // Phase 2: Restart node / reopen queue from storage
     {
-        let storage = Arc::new(StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("reopen storage"));
+        let storage = Arc::new(
+            StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("reopen storage"),
+        );
         let queue = ArkQueue::open(storage.clone(), QueueConfig::default()).expect("reopen queue");
 
         // Both unacknowledged jobs must be rehydrated from LSM storage in causal order
@@ -169,15 +195,20 @@ fn test_crash_recovery_rehydration() {
         // Now complete them with lazy flush
         queue.complete(&lease1).expect("complete 1");
         queue.complete(&lease2).expect("complete 2");
-        queue.flush_completed_to_storage().expect("lazy flush completed");
+        queue
+            .flush_completed_to_storage()
+            .expect("lazy flush completed");
 
         assert!(queue.dispatch().expect("empty").is_none());
     }
 
-        // Phase 3: Reopen again - completed tasks must not be re-enqueued
+    // Phase 3: Reopen again - completed tasks must not be re-enqueued
     {
-        let storage = Arc::new(StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("reopen storage 2"));
-        let queue = ArkQueue::open(storage.clone(), QueueConfig::default()).expect("reopen queue 2");
+        let storage = Arc::new(
+            StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("reopen storage 2"),
+        );
+        let queue =
+            ArkQueue::open(storage.clone(), QueueConfig::default()).expect("reopen queue 2");
         assert!(queue.dispatch().expect("empty").is_none());
     }
 }
@@ -185,12 +216,19 @@ fn test_crash_recovery_rehydration() {
 #[test]
 fn test_concurrent_queue_benchmark_zero_disk_stalls() {
     let dir = tempdir().expect("tempdir");
-    let storage = Arc::new(StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("open storage"));
-    let queue = Arc::new(ArkQueue::open(storage.clone(), QueueConfig {
-        lease_duration: Duration::from_secs(10),
-        max_attempts: 3,
-        keyspace_name: "paas_queue_tasks".to_string(),
-    }).expect("open queue"));
+    let storage =
+        Arc::new(StorageEngine::open(dir.path(), StorageConfig::frugal()).expect("open storage"));
+    let queue = Arc::new(
+        ArkQueue::open(
+            storage.clone(),
+            QueueConfig {
+                lease_duration: Duration::from_secs(10),
+                max_attempts: 3,
+                keyspace_name: "paas_queue_tasks".to_string(),
+            },
+        )
+        .expect("open queue"),
+    );
 
     let num_tasks = 200;
     for i in 0..num_tasks {
@@ -233,6 +271,3 @@ fn test_concurrent_queue_benchmark_zero_disk_stalls() {
         (num_tasks as f64) / elapsed.as_secs_f64()
     );
 }
-
-
-

@@ -1,11 +1,10 @@
-
 use ark_core::FastHeader;
 use ark_crypto::PersistentIdentity;
 use ark_protocol::envelope::ArkEnvelope;
 use ark_protocol::tags::BinaryTag;
 use ark_protocol::wire::WireFrame;
-use ark_transport::ArkQuicEndpoint;
 use ark_runtime::{NodeRuntimeBuilder, Role};
+use ark_transport::ArkQuicEndpoint;
 use rand::rngs::OsRng;
 use tempfile::tempdir;
 
@@ -52,8 +51,14 @@ async fn test_subsystem_dispatch_routing_and_fault_isolation() {
         tags: vec![
             BinaryTag::new(0, 0x3000_0002u32.to_be_bytes().to_vec()),
             BinaryTag::new(ark_dns::anti_sybil::TAG_PARAM_D, b"sovereign.ark".to_vec()),
-            BinaryTag::new(ark_dns::anti_sybil::TAG_DNS_LEASE_EPOCH, (now + 30 * 86_400).to_be_bytes().to_vec()),
-            BinaryTag::new(ark_dns::anti_sybil::TAG_L2_CONTRACT, b"mock-contract".to_vec()),
+            BinaryTag::new(
+                ark_dns::anti_sybil::TAG_DNS_LEASE_EPOCH,
+                (now + 30 * 86_400).to_be_bytes().to_vec(),
+            ),
+            BinaryTag::new(
+                ark_dns::anti_sybil::TAG_L2_CONTRACT,
+                b"mock-contract".to_vec(),
+            ),
             BinaryTag::new(ark_dns::anti_sybil::TAG_NONCE, 0u64.to_be_bytes().to_vec()),
         ],
         timestamp: now,
@@ -81,7 +86,8 @@ async fn test_subsystem_dispatch_routing_and_fault_isolation() {
 
     // 2. Send WoT attestation envelope (KIND_WOT_ATTESTATION = 0x000A)
     let wot_issuer_key = ark_crypto::fn_dsa::FnDsaKeyPair::generate(&mut rng);
-    let wot_issuer_id = ark_crypto::identity::Identity::from_public_key(&wot_issuer_key.public_key).ark_id;
+    let wot_issuer_id =
+        ark_crypto::identity::Identity::from_public_key(&wot_issuer_key.public_key).ark_id;
     let wot_subject_id = [2u8; 32];
     let mut wot_scopes = ark_wot::crypto::CapabilityScopes::empty();
     wot_scopes.insert(ark_wot::crypto::CapabilityScope::RELAY);
@@ -94,9 +100,11 @@ async fn test_subsystem_dispatch_routing_and_fault_isolation() {
         now + 30 * 86400,
         2,
         &wot_issuer_key,
-    ).unwrap();
+    )
+    .unwrap();
     let env_wot = att.to_envelope(&wot_issuer_key.public_key).unwrap();
-    let fast_header_wot = FastHeader::from_bytes(&env_wot.fast_header[..64].try_into().unwrap()).unwrap();
+    let fast_header_wot =
+        FastHeader::from_bytes(&env_wot.fast_header[..64].try_into().unwrap()).unwrap();
     let wire_wot = WireFrame::encode(&fast_header_wot, &env_wot).unwrap();
 
     let (mut send, mut recv) = conn.open_bi().await.unwrap();
@@ -117,7 +125,8 @@ async fn test_subsystem_dispatch_routing_and_fault_isolation() {
         0,
         vec![BinaryTag::new(0, 0x4000_0002u32.to_be_bytes().to_vec())],
         1_700_000_000,
-    ).unwrap();
+    )
+    .unwrap();
     let wire_blob = WireFrame::encode(&fast_header_blob, &env_blob).unwrap();
 
     let (mut send, mut recv) = conn.open_bi().await.unwrap();
@@ -139,7 +148,8 @@ async fn test_subsystem_dispatch_routing_and_fault_isolation() {
         0,
         vec![BinaryTag::new(0, 0x5000_0001u32.to_be_bytes().to_vec())],
         1_700_000_000,
-    ).unwrap();
+    )
+    .unwrap();
     let wire_bad = WireFrame::encode(&fast_header_bad, &env_bad).unwrap();
 
     let (mut send, mut recv) = conn.open_bi().await.unwrap();
@@ -147,7 +157,10 @@ async fn test_subsystem_dispatch_routing_and_fault_isolation() {
     send.finish().unwrap();
     let mut ack = [0u8; 1];
     recv.read_exact(&mut ack).await.unwrap();
-    assert_eq!(ack[0], 1, "Fault should be isolated and envelope handled gracefully");
+    assert_eq!(
+        ack[0], 1,
+        "Fault should be isolated and envelope handled gracefully"
+    );
 
     // Check daemon status is still Running
     assert_eq!(handle.status(), ark_runtime::NodeRuntimeStatus::Running);

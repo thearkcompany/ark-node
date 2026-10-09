@@ -16,7 +16,10 @@ fn test_identical_trees_empty_diff() {
     assert_eq!(tree_a.root_hash(), tree_b.root_hash());
 
     let plan = tree_a.diff(&tree_b);
-    assert!(plan.is_empty(), "Identical trees must produce empty sync plan");
+    assert!(
+        plan.is_empty(),
+        "Identical trees must produce empty sync plan"
+    );
     assert_eq!(plan.keys_to_fetch.len(), 0);
     assert_eq!(plan.keys_to_send.len(), 0);
     assert_eq!(plan.divergent_nodes.len(), 0);
@@ -91,7 +94,11 @@ fn test_bivariate_lww_conflict_resolution_in_diff() {
     assert_eq!(plan.keys_to_fetch.len(), 2);
 
     let send_keys: Vec<&[u8]> = plan.keys_to_send.iter().map(|e| e.key.as_slice()).collect();
-    let fetch_keys: Vec<&[u8]> = plan.keys_to_fetch.iter().map(|e| e.key.as_slice()).collect();
+    let fetch_keys: Vec<&[u8]> = plan
+        .keys_to_fetch
+        .iter()
+        .map(|e| e.key.as_slice())
+        .collect();
 
     assert!(send_keys.contains(&b"key1".as_slice()));
     assert!(send_keys.contains(&b"key3".as_slice()));

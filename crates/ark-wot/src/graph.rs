@@ -1,12 +1,15 @@
 //! Subjective Local Trust Graph & Sybil-Resistant Personalized PageRank (ACP-04).
 
-use std::collections::{HashMap, VecDeque};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, VecDeque};
 
 /// Discrete Trust Tiers mapped deterministically from score S and hop distance d.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
+)]
 pub enum TrustTier {
     /// Untrusted: score < 0.15 or unreachable. Strict rate-limits, VPN denied by default.
+    #[default]
     Untrusted,
     /// Probationary: 0.15 <= score < 0.50, distance <= 4. Moderate rate-limits, small PoW.
     Probationary,
@@ -14,12 +17,6 @@ pub enum TrustTier {
     Trusted,
     /// CorePeer: score >= 0.85, distance <= 1. Full access, zero restriction.
     CorePeer,
-}
-
-impl Default for TrustTier {
-    fn default() -> Self {
-        Self::Untrusted
-    }
 }
 
 /// Evaluation result for a target identity relative to the local node's root.
@@ -104,8 +101,8 @@ impl LocalTrustGraph {
             }
             if let Some(neighbors) = self.adj.get(&node) {
                 for &neighbor in neighbors.keys() {
-                    if !dists.contains_key(&neighbor) {
-                        dists.insert(neighbor, d + 1);
+                    if let std::collections::hash_map::Entry::Vacant(e) = dists.entry(neighbor) {
+                        e.insert(d + 1);
                         queue.push_back((neighbor, d + 1));
                     }
                 }
@@ -193,7 +190,9 @@ impl LocalTrustGraph {
             // Check convergence
             let mut max_diff = 0.0f64;
             for &node in &reachable_nodes {
-                let diff = (p_next.get(&node).copied().unwrap_or(0.0) - p.get(&node).copied().unwrap_or(0.0)).abs();
+                let diff = (p_next.get(&node).copied().unwrap_or(0.0)
+                    - p.get(&node).copied().unwrap_or(0.0))
+                .abs();
                 if diff > max_diff {
                     max_diff = diff;
                 }
@@ -209,7 +208,11 @@ impl LocalTrustGraph {
         let root_score = p.get(&self.local_root).copied().unwrap_or(1.0);
         let mut normalized_scores = HashMap::new();
         for (node, score) in p {
-            let s = if root_score > 0.0 { (score / root_score).clamp(0.0, 1.0) } else { 0.0 };
+            let s = if root_score > 0.0 {
+                (score / root_score).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
             normalized_scores.insert(node, s);
         }
 

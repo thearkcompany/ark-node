@@ -51,8 +51,9 @@ impl DualCuckooAntiReplay {
     pub fn rotate_generation(&self) {
         let mut cur_guard = self.current.write();
         let mut prev_guard = self.previous.write();
-        
-        *prev_guard = std::mem::replace(&mut *cur_guard, CuckooFilter::with_capacity(self.capacity));
+
+        *prev_guard =
+            std::mem::replace(&mut *cur_guard, CuckooFilter::with_capacity(self.capacity));
     }
 }
 
@@ -87,8 +88,7 @@ impl AntiReplayFilter for DualCuckooAntiReplay {
             return Err(ArkError::ReplayDetected);
         }
 
-        cur.add(item)
-            .map_err(|_| ArkError::ReplayFilterFull)?;
+        cur.add(item).map_err(|_| ArkError::ReplayFilterFull)?;
 
         Ok(true)
     }

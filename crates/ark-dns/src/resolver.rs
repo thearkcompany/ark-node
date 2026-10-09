@@ -57,20 +57,25 @@ pub struct StubResolver {
 
 impl StubResolver {
     /// Bind UDP socket and construct a new `StubResolver`.
-    pub async fn new(
-        engine: Arc<SovereignDnsEngine>,
-        config: StubResolverConfig,
-    ) -> Result<Self> {
-        let socket = UdpSocket::bind(config.bind_addr)
-            .await
-            .map_err(|e| DnsError::Serialization(format!("Failed to bind UDP socket to {}: {}", config.bind_addr, e)))?;
+    pub async fn new(engine: Arc<SovereignDnsEngine>, config: StubResolverConfig) -> Result<Self> {
+        let socket = UdpSocket::bind(config.bind_addr).await.map_err(|e| {
+            DnsError::Serialization(format!(
+                "Failed to bind UDP socket to {}: {}",
+                config.bind_addr, e
+            ))
+        })?;
 
-        info!("StubResolver bound to UDP {}", socket.local_addr().map_err(|e| DnsError::Serialization(e.to_string()))?);
+        info!(
+            "StubResolver bound to UDP {}",
+            socket
+                .local_addr()
+                .map_err(|e| DnsError::Serialization(e.to_string()))?
+        );
 
         let forwarder_socket = if config.upstream_dns.is_some() {
-            let fwd = UdpSocket::bind("127.0.0.1:0")
-                .await
-                .map_err(|e| DnsError::Serialization(format!("Failed to bind forwarding socket: {}", e)))?;
+            let fwd = UdpSocket::bind("127.0.0.1:0").await.map_err(|e| {
+                DnsError::Serialization(format!("Failed to bind forwarding socket: {}", e))
+            })?;
             Some(Arc::new(fwd))
         } else {
             None
@@ -232,7 +237,8 @@ impl StubResolver {
                         Ok(upstream_resp) => Ok(Some(upstream_resp)),
                         Err(e) => {
                             warn!("Upstream forwarding to {} failed: {}", upstream_addr, e);
-                            let mut resp = DnsMessage::new_response(query.header.id, DnsRcode::ServerFailure);
+                            let mut resp =
+                                DnsMessage::new_response(query.header.id, DnsRcode::ServerFailure);
                             resp.questions = query.questions;
                             Ok(Some(resp.to_wire()?))
                         }
@@ -248,13 +254,17 @@ impl StubResolver {
     }
 
     /// Forward raw DNS query to configured upstream resolver over UDP.
-    async fn forward_to_upstream(&self, packet_data: &[u8], upstream_addr: SocketAddr) -> Result<Vec<u8>> {
+    async fn forward_to_upstream(
+        &self,
+        packet_data: &[u8],
+        upstream_addr: SocketAddr,
+    ) -> Result<Vec<u8>> {
         let forwarder = match &self.forwarder_socket {
             Some(sock) => sock.clone(),
             None => {
-                let sock = UdpSocket::bind("127.0.0.1:0")
-                    .await
-                    .map_err(|e| DnsError::Serialization(format!("Failed to bind forwarding socket: {}", e)))?;
+                let sock = UdpSocket::bind("127.0.0.1:0").await.map_err(|e| {
+                    DnsError::Serialization(format!("Failed to bind forwarding socket: {}", e))
+                })?;
                 Arc::new(sock)
             }
         };
@@ -262,7 +272,12 @@ impl StubResolver {
         forwarder
             .send_to(packet_data, upstream_addr)
             .await
-            .map_err(|e| DnsError::Serialization(format!("Failed to send to upstream {}: {}", upstream_addr, e)))?;
+            .map_err(|e| {
+                DnsError::Serialization(format!(
+                    "Failed to send to upstream {}: {}",
+                    upstream_addr, e
+                ))
+            })?;
 
         let mut buf = vec![0u8; 4096];
         let (len, _) = tokio::time::timeout(

@@ -5,7 +5,7 @@ use ark_protocol::envelope::ArkEnvelope;
 use ark_protocol::tags::TAG_MASK_ROUTING;
 
 pub const TAG_EXPIRATION: u32 = 0x0001_0001;
-pub const TAG_PARAM_D: u32    = 0x0001_0002;
+pub const TAG_PARAM_D: u32 = 0x0001_0002;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RetentionClass {
@@ -139,5 +139,3 @@ pub fn get_envelope_expiration(envelope: &ArkEnvelope) -> Option<u64> {
     }
     None
 }
-
-

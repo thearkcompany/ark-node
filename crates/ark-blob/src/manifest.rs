@@ -94,7 +94,9 @@ impl BlobManifest {
     /// Converts a Protobuf `ArkBlobManifest` into a `BlobManifest`.
     pub fn from_proto(proto: &ark_protocol::ArkBlobManifest) -> Result<Self> {
         if proto.blob_cid.len() != 32 {
-            return Err(BlobError::SerializationError("Invalid proto blob_cid length".into()));
+            return Err(BlobError::SerializationError(
+                "Invalid proto blob_cid length".into(),
+            ));
         }
         let mut blob_cid = [0u8; 32];
         blob_cid.copy_from_slice(&proto.blob_cid);
@@ -102,7 +104,9 @@ impl BlobManifest {
         let mut shard_hashes = Vec::with_capacity(proto.shard_hashes.len());
         for h in &proto.shard_hashes {
             if h.len() != 32 {
-                return Err(BlobError::SerializationError("Invalid shard hash length in proto".into()));
+                return Err(BlobError::SerializationError(
+                    "Invalid shard hash length in proto".into(),
+                ));
             }
             let mut arr = [0u8; 32];
             arr.copy_from_slice(h);
@@ -112,7 +116,9 @@ impl BlobManifest {
         let mut shard_roots = Vec::with_capacity(proto.shard_roots.len());
         for r in &proto.shard_roots {
             if r.len() != 32 {
-                return Err(BlobError::SerializationError("Invalid shard root length in proto".into()));
+                return Err(BlobError::SerializationError(
+                    "Invalid shard root length in proto".into(),
+                ));
             }
             let mut arr = [0u8; 32];
             arr.copy_from_slice(r);
@@ -175,7 +181,10 @@ impl BlobManifest {
         ];
 
         if let Some(contract) = escrow_contract {
-            tags.push(BinaryTag::new(crate::constants::TAG_L2_CONTRACT, contract.to_vec()));
+            tags.push(BinaryTag::new(
+                crate::constants::TAG_L2_CONTRACT,
+                contract.to_vec(),
+            ));
         }
 
         ArkEnvelope::new(

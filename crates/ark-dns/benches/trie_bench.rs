@@ -1,6 +1,6 @@
-use std::time::Instant;
 use ark_dns::record::DomainRoutingRecord;
 use ark_dns::SovereignDnsTrie;
+use std::time::Instant;
 
 fn main() {
     println!("=== ARK Sovereign DNS Patricia Trie Latency Benchmark ===");

@@ -1,10 +1,8 @@
-use std::net::SocketAddr;
-use rand_chacha::rand_core::SeedableRng;
 use ark_crypto::identity::PersistentIdentity;
 use ark_vpn::framing::frame_micro_packet;
-use ark_vpn::relay::{
-    BlindRelayNode, RelayConfig, RelayEnvelope, RelayProfile,
-};
+use ark_vpn::relay::{BlindRelayNode, RelayConfig, RelayEnvelope, RelayProfile};
+use rand_chacha::rand_core::SeedableRng;
+use std::net::SocketAddr;
 
 #[tokio::test]
 async fn test_blind_relay_zero_knowledge_forwarding() {
@@ -41,7 +39,9 @@ async fn test_blind_relay_zero_knowledge_forwarding() {
     };
 
     // Forward through relay
-    let forwarded = relay.forward_envelope(envelope.clone()).expect("Forwarding must succeed");
+    let forwarded = relay
+        .forward_envelope(envelope.clone())
+        .expect("Forwarding must succeed");
 
     assert_eq!(forwarded.dest_addr, client_b_addr);
     assert_eq!(forwarded.envelope.recipient_id, client_b_id.ark_id);

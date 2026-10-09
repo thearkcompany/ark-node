@@ -9,8 +9,8 @@
 //!   - keys_to_fetch: remote entries that are missing locally or supersede local entries
 //!   - divergent_nodes: subtree/node hashes that diverged for wire traversal
 
-use std::sync::Arc;
 use crate::mst::{MerkleSearchTree, MstEntry, MstNode};
+use std::sync::Arc;
 
 /// Represents an item in the synchronization plan with its key, envelope identity, and metadata.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -46,7 +46,9 @@ pub struct MstSyncPlan {
 impl MstSyncPlan {
     /// Returns true if there are no differences between local and remote trees.
     pub fn is_empty(&self) -> bool {
-        self.keys_to_send.is_empty() && self.keys_to_fetch.is_empty() && self.divergent_nodes.is_empty()
+        self.keys_to_send.is_empty()
+            && self.keys_to_fetch.is_empty()
+            && self.divergent_nodes.is_empty()
     }
 }
 
@@ -72,7 +74,13 @@ impl MstDiff {
             return plan;
         }
 
-        Self::diff_nodes(local_root.cloned(), remote_root.cloned(), local, remote, &mut plan);
+        Self::diff_nodes(
+            local_root.cloned(),
+            remote_root.cloned(),
+            local,
+            remote,
+            &mut plan,
+        );
 
         // Deduplicate and sort keys to maintain deterministic ordering
         plan.keys_to_send.sort_by(|a, b| a.key.cmp(&b.key));
@@ -148,11 +156,26 @@ impl MstDiff {
 
             // Check if opposing tree has this key
             if let Some(opposing_val) = opposing_tree.get(&entry.key) {
-                let (local_ts, local_id, local_tomb, remote_ts, remote_id, remote_tomb) = if node_is_local {
-                    (entry.timestamp, entry.envelope_id, entry.is_tombstone, opposing_val.timestamp, opposing_val.envelope_id, opposing_val.is_tombstone)
-                } else {
-                    (opposing_val.timestamp, opposing_val.envelope_id, opposing_val.is_tombstone, entry.timestamp, entry.envelope_id, entry.is_tombstone)
-                };
+                let (local_ts, local_id, local_tomb, remote_ts, remote_id, remote_tomb) =
+                    if node_is_local {
+                        (
+                            entry.timestamp,
+                            entry.envelope_id,
+                            entry.is_tombstone,
+                            opposing_val.timestamp,
+                            opposing_val.envelope_id,
+                            opposing_val.is_tombstone,
+                        )
+                    } else {
+                        (
+                            opposing_val.timestamp,
+                            opposing_val.envelope_id,
+                            opposing_val.is_tombstone,
+                            entry.timestamp,
+                            entry.envelope_id,
+                            entry.is_tombstone,
+                        )
+                    };
 
                 match Self::compare_lww(local_ts, &local_id, remote_ts, &remote_id) {
                     std::cmp::Ordering::Greater => {
@@ -254,11 +277,26 @@ impl MstDiff {
         plan: &mut MstSyncPlan,
     ) {
         if let Some(opposing_val) = opposing_tree.get(&entry.key) {
-            let (local_ts, local_id, local_tomb, remote_ts, remote_id, remote_tomb) = if entry_is_local {
-                (entry.timestamp, entry.envelope_id, entry.is_tombstone, opposing_val.timestamp, opposing_val.envelope_id, opposing_val.is_tombstone)
-            } else {
-                (opposing_val.timestamp, opposing_val.envelope_id, opposing_val.is_tombstone, entry.timestamp, entry.envelope_id, entry.is_tombstone)
-            };
+            let (local_ts, local_id, local_tomb, remote_ts, remote_id, remote_tomb) =
+                if entry_is_local {
+                    (
+                        entry.timestamp,
+                        entry.envelope_id,
+                        entry.is_tombstone,
+                        opposing_val.timestamp,
+                        opposing_val.envelope_id,
+                        opposing_val.is_tombstone,
+                    )
+                } else {
+                    (
+                        opposing_val.timestamp,
+                        opposing_val.envelope_id,
+                        opposing_val.is_tombstone,
+                        entry.timestamp,
+                        entry.envelope_id,
+                        entry.is_tombstone,
+                    )
+                };
 
             match Self::compare_lww(local_ts, &local_id, remote_ts, &remote_id) {
                 std::cmp::Ordering::Greater => {

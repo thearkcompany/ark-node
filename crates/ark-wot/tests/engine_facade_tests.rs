@@ -1,5 +1,3 @@
-use std::sync::Arc;
-use tempfile::tempdir;
 use ark_crypto::fn_dsa::FnDsaKeyPair;
 use ark_crypto::identity::Identity;
 use ark_storage::{StorageConfig, StorageEngine};
@@ -7,6 +5,8 @@ use ark_wot::crypto::{CapabilityScope, CapabilityScopes, TrustAttestation, Trust
 use ark_wot::engine::WotEngine;
 use ark_wot::graph::TrustTier;
 use rand::rngs::OsRng;
+use std::sync::Arc;
+use tempfile::tempdir;
 
 #[test]
 fn test_wot_engine_e2e_lifecycle_and_subsystem_adapters() {
@@ -48,9 +48,12 @@ fn test_wot_engine_e2e_lifecycle_and_subsystem_adapters() {
         1000 + 30 * 86400,
         1,
         &local_key,
-    ).unwrap();
+    )
+    .unwrap();
 
-    engine.record_attestation(att_a, &local_key.public_key).unwrap();
+    engine
+        .record_attestation(att_a, &local_key.public_key)
+        .unwrap();
 
     // Evaluation after attestation: Trusted
     let eval_a = engine.evaluate_trust(&peer_a);
@@ -84,9 +87,12 @@ fn test_wot_engine_e2e_lifecycle_and_subsystem_adapters() {
         1000 + 30 * 86400,
         2,
         &peer_a_key,
-    ).unwrap();
+    )
+    .unwrap();
 
-    engine.record_attestation(att_b, &peer_a_key.public_key).unwrap();
+    engine
+        .record_attestation(att_b, &peer_a_key.public_key)
+        .unwrap();
 
     // Subgraph anti-entropy synchronization over MST CRDT
     let sync_items = engine.sync_subgraph(1000);
@@ -100,9 +106,12 @@ fn test_wot_engine_e2e_lifecycle_and_subsystem_adapters() {
         "compromised".into(),
         3,
         &local_key,
-    ).unwrap();
+    )
+    .unwrap();
 
-    engine.revoke_attestation(rev_a, &local_key.public_key).unwrap();
+    engine
+        .revoke_attestation(rev_a, &local_key.public_key)
+        .unwrap();
 
     // Immediately cuts off peer_a and transitively breaks peer_b
     assert!(!engine.is_vpn_allowed(&peer_a));
@@ -146,15 +155,21 @@ fn test_wot_engine_ingest_envelope_lifecycle_and_adversarial_rejection() {
         2000 + 30 * 86400,
         1,
         &local_key,
-    ).unwrap();
+    )
+    .unwrap();
 
     let att_envelope = att.to_envelope(&local_key.public_key).unwrap();
 
     // Adversarial test: Missing TAG_WOT_PUBKEY
     let mut bad_envelope_no_pubkey = att_envelope.clone();
-    bad_envelope_no_pubkey.tags.retain(|tag| tag.tag_type != ark_wot::crypto::TAG_WOT_PUBKEY);
+    bad_envelope_no_pubkey
+        .tags
+        .retain(|tag| tag.tag_type != ark_wot::crypto::TAG_WOT_PUBKEY);
     let err_no_pubkey = engine.ingest_envelope(&bad_envelope_no_pubkey);
-    assert!(err_no_pubkey.is_err(), "Must reject envelope missing TAG_WOT_PUBKEY");
+    assert!(
+        err_no_pubkey.is_err(),
+        "Must reject envelope missing TAG_WOT_PUBKEY"
+    );
     // Ensure graph/storage was not updated
     assert_eq!(engine.evaluate_trust(&peer_id).tier, TrustTier::Untrusted);
 
@@ -166,7 +181,10 @@ fn test_wot_engine_ingest_envelope_lifecycle_and_adversarial_rejection() {
         }
     }
     let err_wrong_key = engine.ingest_envelope(&bad_envelope_wrong_key);
-    assert!(err_wrong_key.is_err(), "Must reject envelope where pubkey != issuer_id");
+    assert!(
+        err_wrong_key.is_err(),
+        "Must reject envelope where pubkey != issuer_id"
+    );
     assert_eq!(engine.evaluate_trust(&peer_id).tier, TrustTier::Untrusted);
 
     // Adversarial test: Corrupted signature
@@ -175,7 +193,10 @@ fn test_wot_engine_ingest_envelope_lifecycle_and_adversarial_rejection() {
     tampered_att.signature[0] ^= 0xFF;
     bad_envelope_corrupt_sig.payload = tampered_att.to_cbor().unwrap();
     let err_corrupt_sig = engine.ingest_envelope(&bad_envelope_corrupt_sig);
-    assert!(err_corrupt_sig.is_err(), "Must reject envelope with corrupted signature");
+    assert!(
+        err_corrupt_sig.is_err(),
+        "Must reject envelope with corrupted signature"
+    );
     assert_eq!(engine.evaluate_trust(&peer_id).tier, TrustTier::Untrusted);
 
     // Adversarial test: Unsupported envelope kind
@@ -192,13 +213,20 @@ fn test_wot_engine_ingest_envelope_lifecycle_and_adversarial_rejection() {
         [0u8; 16],
         [0u8; 16],
         0,
-    ).to_bytes().to_vec();
+    )
+    .to_bytes()
+    .to_vec();
     let err_wrong_kind = engine.ingest_envelope(&bad_envelope_wrong_kind);
-    assert!(err_wrong_kind.is_err(), "Must reject envelope with unsupported kind");
+    assert!(
+        err_wrong_kind.is_err(),
+        "Must reject envelope with unsupported kind"
+    );
     assert_eq!(engine.evaluate_trust(&peer_id).tier, TrustTier::Untrusted);
 
     // 3. Successful ingestion of valid attestation envelope
-    engine.ingest_envelope(&att_envelope).expect("Valid attestation ingestion must succeed");
+    engine
+        .ingest_envelope(&att_envelope)
+        .expect("Valid attestation ingestion must succeed");
 
     // Evaluation updated immediately: Trusted / CorePeer
     let eval_trusted = engine.evaluate_trust(&peer_id);
@@ -218,7 +246,8 @@ fn test_wot_engine_ingest_envelope_lifecycle_and_adversarial_rejection() {
         "test revocation".into(),
         2,
         &local_key,
-    ).unwrap();
+    )
+    .unwrap();
 
     let rev_envelope = rev.to_envelope(&local_key.public_key).unwrap();
 
@@ -228,14 +257,19 @@ fn test_wot_engine_ingest_envelope_lifecycle_and_adversarial_rejection() {
     tampered_rev.signature[0] ^= 0xFF;
     bad_rev_corrupt_sig.payload = tampered_rev.to_cbor().unwrap();
     let err_rev_sig = engine.ingest_envelope(&bad_rev_corrupt_sig);
-    assert!(err_rev_sig.is_err(), "Must reject revocation with corrupted signature");
+    assert!(
+        err_rev_sig.is_err(),
+        "Must reject revocation with corrupted signature"
+    );
     assert_eq!(engine.evaluate_trust(&peer_id).tier, TrustTier::Trusted);
 
     // Advance clock to match revocation timestamp (2100)
     clock.set_time(2100);
 
     // Ingest valid revocation
-    engine.ingest_envelope(&rev_envelope).expect("Valid revocation ingestion must succeed");
+    engine
+        .ingest_envelope(&rev_envelope)
+        .expect("Valid revocation ingestion must succeed");
 
     // Verification: immediate edge truncation and cache refresh
     let eval_after_rev = engine.evaluate_trust(&peer_id);
@@ -243,4 +277,3 @@ fn test_wot_engine_ingest_envelope_lifecycle_and_adversarial_rejection() {
     assert_eq!(eval_after_rev.score, 0.0);
     assert!(!engine.is_vpn_allowed(&peer_id));
 }
-

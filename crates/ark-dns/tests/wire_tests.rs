@@ -1,8 +1,7 @@
-use std::net::{Ipv4Addr, Ipv6Addr};
 use ark_dns::wire::{
-    DnsMessage, DnsQuestion, DnsRecord, DnsRecordData,
-    DnsOpcode, DnsRcode, DnsRecordType, DnsClass,
+    DnsClass, DnsMessage, DnsOpcode, DnsQuestion, DnsRcode, DnsRecord, DnsRecordData, DnsRecordType,
 };
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 #[test]
 fn test_parse_simple_a_query() {
@@ -17,7 +16,7 @@ fn test_parse_simple_a_query() {
     packet.extend_from_slice(&0u16.to_be_bytes()); // ANCOUNT
     packet.extend_from_slice(&0u16.to_be_bytes()); // NSCOUNT
     packet.extend_from_slice(&0u16.to_be_bytes()); // ARCOUNT
-    // Question: alice.ark
+                                                   // Question: alice.ark
     packet.push(5);
     packet.extend_from_slice(b"alice");
     packet.push(3);
@@ -123,7 +122,10 @@ fn test_name_compression_pointer() {
     let msg = DnsMessage::from_wire(&packet).expect("parse compressed packet");
     assert_eq!(msg.questions[0].qname, "node.ark");
     assert_eq!(msg.answers[0].name, "node.ark");
-    assert_eq!(msg.answers[0].rdata, DnsRecordData::A(Ipv4Addr::new(127, 0, 0, 1)));
+    assert_eq!(
+        msg.answers[0].rdata,
+        DnsRecordData::A(Ipv4Addr::new(127, 0, 0, 1))
+    );
 }
 
 #[test]

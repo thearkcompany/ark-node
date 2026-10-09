@@ -11,9 +11,9 @@
 //! - `handle_sync_request(req)` — generate a bounded `MstSyncResponse`.
 //! - `apply_sync_response(res)` — validate and incorporate a peer response.
 
-use std::sync::Arc;
 use ark_protocol::{ArkEnvelope, MstSyncRequest, MstSyncResponse};
 use ark_storage::{compute_envelope_id, StorageEngine};
+use std::sync::Arc;
 
 use crate::diff::{MstDiff, MstSyncPlan};
 use crate::error::Result;
@@ -47,7 +47,12 @@ impl MstEngine {
     /// - `Inserted` — new key.
     /// - `Updated` — superseded an older entry.
     /// - `SupersededLww` — incoming envelope is older; no tree mutation occurs.
-    pub fn put(&self, namespace: &str, key: &[u8], envelope: &ArkEnvelope) -> Result<MstPutOutcome> {
+    pub fn put(
+        &self,
+        namespace: &str,
+        key: &[u8],
+        envelope: &ArkEnvelope,
+    ) -> Result<MstPutOutcome> {
         let envelope_id = compute_envelope_id(envelope)
             .map_err(|e| crate::error::ArkCrdtError::Database(e.to_string()))?;
         let timestamp = envelope.timestamp;
@@ -56,14 +61,16 @@ impl MstEngine {
         let outcome = if let Some((existing_id, existing_ts)) = self.store.get(namespace, key)? {
             if timestamp > existing_ts || (timestamp == existing_ts && envelope_id > existing_id) {
                 // Supersede existing — actually insert.
-                self.store.put(namespace, key.to_vec(), envelope_id, timestamp)?;
+                self.store
+                    .put(namespace, key.to_vec(), envelope_id, timestamp)?;
                 let _ = self.storage.put_envelope(envelope);
                 MstPutOutcome::Updated
             } else {
                 MstPutOutcome::SupersededLww
             }
         } else {
-            self.store.put(namespace, key.to_vec(), envelope_id, timestamp)?;
+            self.store
+                .put(namespace, key.to_vec(), envelope_id, timestamp)?;
             let _ = self.storage.put_envelope(envelope);
             MstPutOutcome::Inserted
         };
@@ -74,12 +81,10 @@ impl MstEngine {
     /// Point lookup: returns the `ArkEnvelope` for `key` in `namespace`, if present and not a tombstone.
     pub fn get(&self, namespace: &str, key: &[u8]) -> Result<Option<ArkEnvelope>> {
         match self.store.get(namespace, key)? {
-            Some((envelope_id, _ts)) => {
-                match self.storage.get_envelope(&envelope_id)? {
-                    Some(env) => Ok(Some(env)),
-                    None => Ok(None),
-                }
-            }
+            Some((envelope_id, _ts)) => match self.storage.get_envelope(&envelope_id)? {
+                Some(env) => Ok(Some(env)),
+                None => Ok(None),
+            },
             None => Ok(None),
         }
     }
@@ -153,7 +158,12 @@ fn collect_entries_into_tree(
     node: &crate::mst::MstNode,
 ) -> Result<()> {
     for entry in &node.entries {
-        tree.insert(entry.key.clone(), entry.envelope_id, entry.timestamp, entry.is_tombstone);
+        tree.insert(
+            entry.key.clone(),
+            entry.envelope_id,
+            entry.timestamp,
+            entry.is_tombstone,
+        );
     }
 
     for child_arc in node.children.iter().flatten() {

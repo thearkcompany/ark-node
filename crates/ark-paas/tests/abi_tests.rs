@@ -1,9 +1,8 @@
-use std::sync::Arc;
 use ark_paas::{
-    HostAbiState, InMemoryBlobReader,
-    InMemoryEnvelopeEmitter, InMemoryKvStore, InMemoryPmtClock, KvStoreBackend,
-    PaasError, WasmWorker,
+    HostAbiState, InMemoryBlobReader, InMemoryEnvelopeEmitter, InMemoryKvStore, InMemoryPmtClock,
+    KvStoreBackend, PaasError, WasmWorker,
 };
+use std::sync::Arc;
 
 #[test]
 fn test_host_abi_kv_get_and_set() {
@@ -308,11 +307,10 @@ fn test_io_fuel_deduction_and_exhaustion() {
     state_exhaust.io_fuel_limit = 60;
     state_exhaust.io_fuel_remaining = 60;
 
-    let result = worker
-        .execute_with_state(Some(state_exhaust), |store, instance| {
-            let func = instance.get_typed_func::<i32, i32>(&mut *store, "write_kv")?;
-            func.call(&mut *store, 60)
-        });
+    let result = worker.execute_with_state(Some(state_exhaust), |store, instance| {
+        let func = instance.get_typed_func::<i32, i32>(&mut *store, "write_kv")?;
+        func.call(&mut *store, 60)
+    });
 
     match result {
         Err(PaasError::IoFuelExhausted { limit_bytes }) => {
@@ -395,7 +393,8 @@ fn test_guest_linear_memory_exchange_with_alloc_dealloc() {
         .execute_with_state(Some(state), |store, instance| {
             // Verify ark_alloc and ark_dealloc are exported
             let alloc_fn = instance.get_typed_func::<u32, u32>(&mut *store, "ark_alloc")?;
-            let dealloc_fn = instance.get_typed_func::<(u32, u32), ()>(&mut *store, "ark_dealloc")?;
+            let dealloc_fn =
+                instance.get_typed_func::<(u32, u32), ()>(&mut *store, "ark_dealloc")?;
 
             let ptr = alloc_fn.call(&mut *store, 64)?;
             assert!(ptr >= 1024);

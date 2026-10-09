@@ -19,7 +19,6 @@ pub use sync::{
     SyncApplyStats, KIND_KV_MST_SYNC, MAX_SYNC_BATCH_KEYS, MAX_SYNC_BATCH_NODES, MAX_TREE_DEPTH,
 };
 
-
 pub struct MultiValueRegister<T> {
     pub value: T,
     pub clock: u64,

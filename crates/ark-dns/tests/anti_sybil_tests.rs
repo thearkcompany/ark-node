@@ -52,14 +52,7 @@ fn create_valid_claim_envelope(
     contract_id: &[u8],
     owner_key_id: [u8; 16],
 ) -> ArkEnvelope {
-    let fast_header = FastHeader::new(
-        0,
-        128,
-        KIND_DNS_CLAIM_PUBLIC,
-        owner_key_id,
-        [0u8; 16],
-        1,
-    );
+    let fast_header = FastHeader::new(0, 128, KIND_DNS_CLAIM_PUBLIC, owner_key_id, [0u8; 16], 1);
 
     let mut envelope = ArkEnvelope {
         magic: b"ARK1".to_vec(),
@@ -167,7 +160,9 @@ fn test_rejection_missing_tags() {
 
     // Missing TAG_DNS_LEASE_EPOCH
     let mut env_no_epoch = env_orig.clone();
-    env_no_epoch.tags.retain(|t| t.tag_type != TAG_DNS_LEASE_EPOCH);
+    env_no_epoch
+        .tags
+        .retain(|t| t.tag_type != TAG_DNS_LEASE_EPOCH);
     assert!(matches!(
         validate_dns_claim(&env_no_epoch, &verifier),
         Err(DnsError::MissingTag(_))
@@ -198,15 +193,15 @@ fn test_rejection_invalid_fqdn() {
 
     let invalid_fqdns = vec![
         "".to_string(),
-        "invalid".to_string(),           // missing .ark
-        ".ark".to_string(),              // empty label
-        "alice..ark".to_string(),        // double dot
-        "-alice.ark".to_string(),        // leading hyphen
-        "alice-.ark".to_string(),        // trailing hyphen in label
-        "alice/foo.ark".to_string(),     // invalid character
-        "alice_bar.ark".to_string(),     // underscore not allowed in DNS hostname
-        "UPPER.ark".to_string(),         // uppercase characters
-        "a".repeat(64) + ".ark",         // label > 63 chars
+        "invalid".to_string(),       // missing .ark
+        ".ark".to_string(),          // empty label
+        "alice..ark".to_string(),    // double dot
+        "-alice.ark".to_string(),    // leading hyphen
+        "alice-.ark".to_string(),    // trailing hyphen in label
+        "alice/foo.ark".to_string(), // invalid character
+        "alice_bar.ark".to_string(), // underscore not allowed in DNS hostname
+        "UPPER.ark".to_string(),     // uppercase characters
+        "a".repeat(64) + ".ark",     // label > 63 chars
     ];
 
     for fqdn in &invalid_fqdns {
@@ -270,7 +265,8 @@ fn test_signature_verification_on_claim_envelope() {
 
     let mut env = create_valid_claim_envelope("signed.ark", 1_800_000_000, contract, owner_key_id);
     // Attach public key tag (0x0002)
-    env.tags.push(BinaryTag::new(0x0002, keypair.public_key.to_vec()));
+    env.tags
+        .push(BinaryTag::new(0x0002, keypair.public_key.to_vec()));
 
     // Sign canonical ID
     let canonical_id = calculate_canonical_id(&env);
@@ -296,7 +292,11 @@ fn test_signature_verification_on_claim_envelope() {
 
     // Valid signature must pass
     let res = validate_dns_claim(&env, &verifier);
-    assert!(res.is_ok(), "Claim with valid FN-DSA signature must pass: {:?}", res);
+    assert!(
+        res.is_ok(),
+        "Claim with valid FN-DSA signature must pass: {:?}",
+        res
+    );
 
     // Tampered signature must fail with InvalidSignature
     let mut tampered_env = env.clone();
@@ -316,8 +316,15 @@ fn test_signature_verification_on_claim_envelope() {
             break;
         }
     }
-    assert!(mined_tampered, "PoW mining for tampered envelope must succeed");
+    assert!(
+        mined_tampered,
+        "PoW mining for tampered envelope must succeed"
+    );
 
     let bad_res = validate_dns_claim(&tampered_env, &verifier);
-    assert!(matches!(bad_res, Err(DnsError::InvalidSignature(_))), "Expected InvalidSignature, got {:?}", bad_res);
+    assert!(
+        matches!(bad_res, Err(DnsError::InvalidSignature(_))),
+        "Expected InvalidSignature, got {:?}",
+        bad_res
+    );
 }

@@ -1,17 +1,15 @@
+use prost::Message;
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::tempdir;
-use prost::Message;
 
+use ark_paas::{
+    ArkQueue, EnvelopePayload, ExecutionStatus, InMemoryBlobReader, InMemoryEnvelopeEmitter,
+    InMemoryKvStore, KvStoreBackend, ManualPayload, MockPmtClock, PaasEngine, QueueConfig, Trigger,
+    TriggerSource, WorkerConfig, WorkerManifest,
+};
 use ark_protocol::envelope::ArkEnvelope;
 use ark_storage::{StorageConfig, StorageEngine};
-use ark_paas::{
-    ArkQueue, EnvelopePayload, ExecutionStatus, InMemoryBlobReader,
-    InMemoryEnvelopeEmitter, InMemoryKvStore, KvStoreBackend, ManualPayload,
-    MockPmtClock, PaasEngine, QueueConfig, Trigger, TriggerSource,
-    WorkerConfig, WorkerManifest,
-};
-
 
 fn create_test_engine() -> (
     PaasEngine<MockPmtClock>,
@@ -23,11 +21,17 @@ fn create_test_engine() -> (
 ) {
     let tmp = tempdir().unwrap();
     let storage = Arc::new(StorageEngine::open(tmp.path(), StorageConfig::frugal()).unwrap());
-    let queue = Arc::new(ArkQueue::open(storage, QueueConfig {
-        lease_duration: Duration::from_millis(100),
-        max_attempts: 3,
-        keyspace_name: "paas_engine_tasks".to_string(),
-    }).unwrap());
+    let queue = Arc::new(
+        ArkQueue::open(
+            storage,
+            QueueConfig {
+                lease_duration: Duration::from_millis(100),
+                max_attempts: 3,
+                keyspace_name: "paas_engine_tasks".to_string(),
+            },
+        )
+        .unwrap(),
+    );
 
     let clock = Arc::new(MockPmtClock::new(1791331200)); // 2026-10-07 00:00:00 UTC
     let kv_store = Arc::new(InMemoryKvStore::new());
@@ -101,7 +105,8 @@ fn test_protobuf_manifest_and_telemetry_roundtrip() {
 
     let mut tele_buf = Vec::new();
     telemetry.encode(&mut tele_buf).expect("encode telemetry");
-    let decoded_tele = ark_paas::ExecutionTelemetry::decode(tele_buf.as_slice()).expect("decode telemetry");
+    let decoded_tele =
+        ark_paas::ExecutionTelemetry::decode(tele_buf.as_slice()).expect("decode telemetry");
     assert_eq!(decoded_tele.task_id, "task-test-1");
     assert_eq!(decoded_tele.status, ExecutionStatus::Success as i32);
     assert_eq!(decoded_tele.cpu_fuel_consumed, 12345);
@@ -170,7 +175,9 @@ fn test_e2e_full_chain_cron_tick_queue_wasm_with_host_abi_and_ack_elision() {
         description: "Periodic cron worker with host ABI".to_string(),
     };
 
-    engine.register_worker(&wasm_bytes, manifest).expect("register worker");
+    engine
+        .register_worker(&wasm_bytes, manifest)
+        .expect("register worker");
     assert_eq!(engine.worker_count(), 1);
 
     // Initial state: KV store is empty
@@ -210,7 +217,10 @@ fn test_e2e_full_chain_cron_tick_queue_wasm_with_host_abi_and_ack_elision() {
     assert_eq!(engine.queue().disk_sync_writes_count(), sync_writes_before);
 
     // Further poll returns None (queue empty)
-    assert!(engine.poll_and_execute_next().expect("poll empty").is_none());
+    assert!(engine
+        .poll_and_execute_next()
+        .expect("poll empty")
+        .is_none());
 }
 
 #[test]
@@ -245,7 +255,9 @@ fn test_e2e_envelope_trigger_ingestion_and_dispatch() {
         cron_schedule: String::new(),
         description: "Envelope reactive worker".to_string(),
     };
-    engine.register_worker(&wasm_bytes, manifest).expect("register worker");
+    engine
+        .register_worker(&wasm_bytes, manifest)
+        .expect("register worker");
 
     // Create an inbound envelope with core_tag_mask = 0x01
     let env = ArkEnvelope::new(
@@ -257,13 +269,16 @@ fn test_e2e_envelope_trigger_ingestion_and_dispatch() {
         0x01, // matching tag mask
         vec![],
         1791331200,
-    ).expect("create envelope");
+    )
+    .expect("create envelope");
 
     // 1. Ingest Trigger::EnvelopeReceived via TriggerSource trait
-    let enqueued_tasks = engine.ingest_trigger(Trigger::EnvelopeReceived(EnvelopePayload {
-        envelope: env,
-        target_worker_id: None, // routes automatically via tag mask!
-    })).expect("ingest envelope trigger");
+    let enqueued_tasks = engine
+        .ingest_trigger(Trigger::EnvelopeReceived(EnvelopePayload {
+            envelope: env,
+            target_worker_id: None, // routes automatically via tag mask!
+        }))
+        .expect("ingest envelope trigger");
 
     assert_eq!(enqueued_tasks.len(), 1);
     assert!(enqueued_tasks[0].starts_with("env-envelope-worker-"));
@@ -315,14 +330,18 @@ fn test_e2e_manual_invocation_trigger() {
         cron_schedule: String::new(),
         description: "Manual invocation worker".to_string(),
     };
-    engine.register_worker(&wasm_bytes, manifest).expect("register worker");
+    engine
+        .register_worker(&wasm_bytes, manifest)
+        .expect("register worker");
 
     // Ingest Trigger::ManualInvocation
-    let task_ids = engine.ingest_trigger(Trigger::ManualInvocation(ManualPayload {
-        target_worker_id: "manual-worker".to_string(),
-        payload: b"manual input".to_vec(),
-        invocation_id: Some("manual-task-999".to_string()),
-    })).expect("ingest manual trigger");
+    let task_ids = engine
+        .ingest_trigger(Trigger::ManualInvocation(ManualPayload {
+            target_worker_id: "manual-worker".to_string(),
+            payload: b"manual input".to_vec(),
+            invocation_id: Some("manual-task-999".to_string()),
+        }))
+        .expect("ingest manual trigger");
 
     assert_eq!(task_ids, vec!["manual-task-999"]);
 
@@ -369,17 +388,24 @@ fn test_e2e_cpu_fuel_exhaustion_retry_and_dlq_routing() {
         cron_schedule: String::new(),
         description: "Infinite loop worker".to_string(),
     };
-    engine.register_worker(&wasm_bytes, manifest).expect("register worker");
+    engine
+        .register_worker(&wasm_bytes, manifest)
+        .expect("register worker");
 
     // Ingest manual trigger
-    engine.ingest_trigger(Trigger::ManualInvocation(ManualPayload {
-        target_worker_id: "infinite-loop-worker".to_string(),
-        payload: vec![],
-        invocation_id: Some("task-infinite-1".to_string()),
-    })).expect("ingest");
+    engine
+        .ingest_trigger(Trigger::ManualInvocation(ManualPayload {
+            target_worker_id: "infinite-loop-worker".to_string(),
+            payload: vec![],
+            invocation_id: Some("task-infinite-1".to_string()),
+        }))
+        .expect("ingest");
 
     // Attempt 1: Execute -> Fails with CpuFuelExhausted
-    let tele1 = engine.poll_and_execute_next().unwrap().expect("dispatched attempt 1");
+    let tele1 = engine
+        .poll_and_execute_next()
+        .unwrap()
+        .expect("dispatched attempt 1");
     assert_eq!(tele1.status, ExecutionStatus::CpuFuelExhausted as i32);
     assert_eq!(tele1.worker_id, "infinite-loop-worker");
     assert!(tele1.error_message.contains("CPU fuel exhausted"));
@@ -390,7 +416,10 @@ fn test_e2e_cpu_fuel_exhaustion_retry_and_dlq_routing() {
     assert_eq!(timed_out, 1);
 
     // Attempt 2: Re-enqueued for retry -> Fails again with CpuFuelExhausted
-    let tele2 = engine.poll_and_execute_next().unwrap().expect("dispatched attempt 2");
+    let tele2 = engine
+        .poll_and_execute_next()
+        .unwrap()
+        .expect("dispatched attempt 2");
     assert_eq!(tele2.status, ExecutionStatus::CpuFuelExhausted as i32);
 
     std::thread::sleep(Duration::from_millis(110));
@@ -398,7 +427,10 @@ fn test_e2e_cpu_fuel_exhaustion_retry_and_dlq_routing() {
     assert_eq!(timed_out2, 1);
 
     // Attempt 3: Re-enqueued for retry -> Fails (reaches max_attempts = 3)
-    let tele3 = engine.poll_and_execute_next().unwrap().expect("dispatched attempt 3");
+    let tele3 = engine
+        .poll_and_execute_next()
+        .unwrap()
+        .expect("dispatched attempt 3");
     assert_eq!(tele3.status, ExecutionStatus::CpuFuelExhausted as i32);
 
     std::thread::sleep(Duration::from_millis(110));
@@ -453,13 +485,17 @@ fn test_e2e_io_fuel_exhaustion_mapping() {
         cron_schedule: String::new(),
         description: "IO fuel test worker".to_string(),
     };
-    engine.register_worker(&wasm_bytes, manifest).expect("register worker");
+    engine
+        .register_worker(&wasm_bytes, manifest)
+        .expect("register worker");
 
-    engine.ingest_trigger(Trigger::ManualInvocation(ManualPayload {
-        target_worker_id: "io-heavy-worker".to_string(),
-        payload: vec![],
-        invocation_id: Some("task-io-1".to_string()),
-    })).expect("ingest");
+    engine
+        .ingest_trigger(Trigger::ManualInvocation(ManualPayload {
+            target_worker_id: "io-heavy-worker".to_string(),
+            payload: vec![],
+            invocation_id: Some("task-io-1".to_string()),
+        }))
+        .expect("ingest");
 
     let telemetry = engine.poll_and_execute_next().unwrap().expect("execute");
     assert_eq!(telemetry.status, ExecutionStatus::IoFuelExhausted as i32);

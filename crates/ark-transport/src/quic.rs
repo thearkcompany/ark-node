@@ -14,13 +14,15 @@ impl ArkQuicEndpoint {
     /// Creates a QUIC client endpoint locked strictly to ALPN "ark-pqc/v1"
     pub fn new_client(bind_addr: SocketAddr) -> Result<Self> {
         let mut endpoint = Endpoint::client(bind_addr).map_err(ArkError::IoError)?;
-        
-        let mut crypto_cfg = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
-            .with_safe_default_protocol_versions()
-            .map_err(|e| ArkError::CryptoError(e.to_string()))?
-            .dangerous()
-            .with_custom_certificate_verifier(Arc::new(DangerousVerifier))
-            .with_no_client_auth();
+
+        let mut crypto_cfg = rustls::ClientConfig::builder_with_provider(Arc::new(
+            rustls::crypto::ring::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .map_err(|e| ArkError::CryptoError(e.to_string()))?
+        .dangerous()
+        .with_custom_certificate_verifier(Arc::new(DangerousVerifier))
+        .with_no_client_auth();
 
         crypto_cfg.alpn_protocols = vec![ALPN_ARK_PQC_V1.to_vec()];
 
@@ -32,20 +34,20 @@ impl ArkQuicEndpoint {
     }
 
     /// Creates a QUIC server endpoint locked strictly to ALPN "ark-pqc/v1"
-    pub fn new_server(
-        bind_addr: SocketAddr,
-        cert_der: Vec<u8>,
-        key_der: Vec<u8>,
-    ) -> Result<Self> {
+    pub fn new_server(bind_addr: SocketAddr, cert_der: Vec<u8>, key_der: Vec<u8>) -> Result<Self> {
         let certs = vec![rustls::pki_types::CertificateDer::from(cert_der)];
-        let key = rustls::pki_types::PrivateKeyDer::Pkcs8(rustls::pki_types::PrivatePkcs8KeyDer::from(key_der));
+        let key = rustls::pki_types::PrivateKeyDer::Pkcs8(
+            rustls::pki_types::PrivatePkcs8KeyDer::from(key_der),
+        );
 
-        let mut crypto_cfg = rustls::ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
-            .with_safe_default_protocol_versions()
-            .map_err(|e| ArkError::CryptoError(e.to_string()))?
-            .with_no_client_auth()
-            .with_single_cert(certs, key)
-            .map_err(|e| ArkError::CryptoError(e.to_string()))?;
+        let mut crypto_cfg = rustls::ServerConfig::builder_with_provider(Arc::new(
+            rustls::crypto::ring::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .map_err(|e| ArkError::CryptoError(e.to_string()))?
+        .with_no_client_auth()
+        .with_single_cert(certs, key)
+        .map_err(|e| ArkError::CryptoError(e.to_string()))?;
 
         crypto_cfg.alpn_protocols = vec![ALPN_ARK_PQC_V1.to_vec()];
 
@@ -67,7 +69,6 @@ impl ArkQuicEndpoint {
         Self::new_server(bind_addr, cert_der, key_der)
     }
 }
-
 
 /// Verification helper for P2P identity handshake
 #[derive(Debug)]

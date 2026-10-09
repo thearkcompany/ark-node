@@ -1,6 +1,6 @@
+use crate::mst::MstNode;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
-use crate::mst::MstNode;
 
 /// Approximate memory usage of an MstNode in bytes.
 pub fn estimate_node_size_bytes(node: &MstNode) -> usize {

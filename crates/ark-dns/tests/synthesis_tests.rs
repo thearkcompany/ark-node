@@ -1,7 +1,7 @@
-use std::net::Ipv4Addr;
 use ark_dns::synthesis::synthesize_dns_answers;
 use ark_dns::wire::{DnsRecordData, DnsRecordType};
 use ark_protocol::proto::DomainResolveResponse;
+use std::net::Ipv4Addr;
 
 #[test]
 fn test_synthesize_a_records_from_ips_and_multiaddrs() {
@@ -23,14 +23,26 @@ fn test_synthesize_a_records_from_ips_and_multiaddrs() {
 
     let a_records = synthesize_dns_answers("alice.ark", DnsRecordType::A, &response, 60);
     assert_eq!(a_records.len(), 2);
-    assert_eq!(a_records[0].rdata, DnsRecordData::A(Ipv4Addr::new(192, 168, 1, 50)));
-    assert_eq!(a_records[1].rdata, DnsRecordData::A(Ipv4Addr::new(10, 0, 0, 1)));
+    assert_eq!(
+        a_records[0].rdata,
+        DnsRecordData::A(Ipv4Addr::new(192, 168, 1, 50))
+    );
+    assert_eq!(
+        a_records[1].rdata,
+        DnsRecordData::A(Ipv4Addr::new(10, 0, 0, 1))
+    );
     assert_eq!(a_records[0].ttl, 60);
 
     let aaaa_records = synthesize_dns_answers("alice.ark", DnsRecordType::AAAA, &response, 60);
     assert_eq!(aaaa_records.len(), 2);
-    assert_eq!(aaaa_records[0].rdata, DnsRecordData::AAAA("2001:db8::1".parse().unwrap()));
-    assert_eq!(aaaa_records[1].rdata, DnsRecordData::AAAA("2001:db8::2".parse().unwrap()));
+    assert_eq!(
+        aaaa_records[0].rdata,
+        DnsRecordData::AAAA("2001:db8::1".parse().unwrap())
+    );
+    assert_eq!(
+        aaaa_records[1].rdata,
+        DnsRecordData::AAAA("2001:db8::2".parse().unwrap())
+    );
 }
 
 #[test]
@@ -57,6 +69,10 @@ fn test_synthesize_txt_records() {
         })
         .collect();
 
-    assert!(rdata_strings.iter().any(|s| s.contains("peer=") || s.contains("target_peer_id=")));
-    assert!(rdata_strings.iter().any(|s| s.contains("owner=") || s.contains("owner_key_id=")));
+    assert!(rdata_strings
+        .iter()
+        .any(|s| s.contains("peer=") || s.contains("target_peer_id=")));
+    assert!(rdata_strings
+        .iter()
+        .any(|s| s.contains("owner=") || s.contains("owner_key_id=")));
 }

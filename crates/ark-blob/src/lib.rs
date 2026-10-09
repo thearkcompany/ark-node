@@ -26,9 +26,8 @@ pub use gf::{mul_slice, mul_slice_add};
 pub use ghost_lock::{GhostLockEntry, SafeGhostLock};
 pub use manifest::{BlobManifest, ShardStatus};
 pub use merkle::{
-    compute_blob_cid, compute_merkle_root, compute_shard_merkle_roots,
-    compute_single_shard_root, hash_pair, MerkleProofNode, ShardMerkleProof,
-    SiblingPosition,
+    compute_blob_cid, compute_merkle_root, compute_shard_merkle_roots, compute_single_shard_root,
+    hash_pair, MerkleProofNode, ShardMerkleProof, SiblingPosition,
 };
 pub use por::{
     compute_sub_block_kmac, derive_sub_block_index, generate_depin_challenge,

@@ -72,7 +72,11 @@ fn test_instruction_level_cpu_fuel_consumption() {
 
     assert_eq!(res, 5050);
     let consumed_fuel = 100_000 - remaining_fuel;
-    assert!(consumed_fuel > 100, "Fuel must be deducted instruction-by-instruction: consumed {}", consumed_fuel);
+    assert!(
+        consumed_fuel > 100,
+        "Fuel must be deducted instruction-by-instruction: consumed {}",
+        consumed_fuel
+    );
 }
 
 #[test]
@@ -124,24 +128,34 @@ fn test_memory_allocation_ceiling_enforced_at_64mb() {
     let wasm = wat::parse_str(wat).expect("wat parse failed");
 
     let worker = WasmWorker::compile(&wasm).expect("compilation failed");
-    assert_eq!(worker.config().memory_limit_bytes, DEFAULT_MEMORY_LIMIT_BYTES);
+    assert_eq!(
+        worker.config().memory_limit_bytes,
+        DEFAULT_MEMORY_LIMIT_BYTES
+    );
 
     // 1. Growing to 100 pages (~6.4 MB) succeeds
-    let res = worker.execute(|store, instance| {
-        let func = instance.get_typed_func::<i32, i32>(&mut *store, "grow_memory")?;
-        let prev = func.call(&mut *store, 99)?; // 1 + 99 = 100 pages
-        Ok(prev)
-    }).expect("growing to 100 pages should succeed");
+    let res = worker
+        .execute(|store, instance| {
+            let func = instance.get_typed_func::<i32, i32>(&mut *store, "grow_memory")?;
+            let prev = func.call(&mut *store, 99)?; // 1 + 99 = 100 pages
+            Ok(prev)
+        })
+        .expect("growing to 100 pages should succeed");
     assert_eq!(res, 1);
 
     // 2. Growing beyond 1024 pages (e.g. 1500 pages = ~96 MB) fails with memory.grow returning -1
     // or when calling memory.grow beyond store limits.
-    let res_large = worker.execute(|store, instance| {
-        let func = instance.get_typed_func::<i32, i32>(&mut *store, "grow_memory")?;
-        let prev = func.call(&mut *store, 2000)?;
-        Ok(prev)
-    }).expect("memory.grow returns -1 in guest when store limiter rejects growth");
-    assert_eq!(res_large, -1, "Wasm memory.grow returns -1 when exceeding limiter ceiling");
+    let res_large = worker
+        .execute(|store, instance| {
+            let func = instance.get_typed_func::<i32, i32>(&mut *store, "grow_memory")?;
+            let prev = func.call(&mut *store, 2000)?;
+            Ok(prev)
+        })
+        .expect("memory.grow returns -1 in guest when store limiter rejects growth");
+    assert_eq!(
+        res_large, -1,
+        "Wasm memory.grow returns -1 when exceeding limiter ceiling"
+    );
 
     // 3. Directly requiring initial memory > 64 MB (1025 pages) in the module bytecode
     // must fail instantiation / compilation or exceed memory ceiling.
@@ -182,7 +196,8 @@ fn test_preemptive_termination_via_epoch_deadline() {
         epoch_deadline_ticks: 1,
         ..Default::default()
     };
-    let worker = Arc::new(WasmWorker::compile_with_config(&wasm, config).expect("compilation failed"));
+    let worker =
+        Arc::new(WasmWorker::compile_with_config(&wasm, config).expect("compilation failed"));
 
     // Spawn a background thread that will increment the epoch after 20ms
     let worker_clone = Arc::clone(&worker);
@@ -232,9 +247,15 @@ fn test_absence_of_os_sockets_and_filesystem() {
     let result = worker.call_simple("try_syscall");
     match result {
         Err(PaasError::InstantiationFailed(msg)) | Err(PaasError::ExecutionFailed(msg)) => {
-            assert!(msg.contains("unknown import") || msg.contains("wasi_snapshot_preview1"),
-                "Must reject OS imports: {}", msg);
+            assert!(
+                msg.contains("unknown import") || msg.contains("wasi_snapshot_preview1"),
+                "Must reject OS imports: {}",
+                msg
+            );
         }
-        other => panic!("Expected instantiation failure on unauthorized OS import, got {:?}", other),
+        other => panic!(
+            "Expected instantiation failure on unauthorized OS import, got {:?}",
+            other
+        ),
     }
 }

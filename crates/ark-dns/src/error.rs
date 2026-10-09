@@ -73,5 +73,4 @@ pub enum DnsError {
     NotFound(String),
 }
 
-
 pub type Result<T> = std::result::Result<T, DnsError>;

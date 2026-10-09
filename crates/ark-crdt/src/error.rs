@@ -15,10 +15,7 @@ pub enum ArkCrdtError {
     NodeNotFound(String),
 
     #[error("Invalid node hash: expected {expected}, actual {actual}")]
-    InvalidNodeHash {
-        expected: String,
-        actual: String,
-    },
+    InvalidNodeHash { expected: String, actual: String },
 
     #[error("Depth limit exceeded: {0}")]
     DepthLimitExceeded(u32),

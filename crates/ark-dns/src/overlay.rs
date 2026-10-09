@@ -3,10 +3,10 @@
 //! Stores private overlay DNS records (e.g. `nas.ark`, `gateway.ark`) isolated
 //! per owner ArkID / cluster in the `dns_private_overlays` keyspace.
 
-use std::net::IpAddr;
+use crate::error::{DnsError, Result};
 use ark_storage::{Keyspace, StorageEngine};
 use serde::{Deserialize, Serialize};
-use crate::error::{DnsError, Result};
+use std::net::IpAddr;
 
 pub const DNS_PRIVATE_OVERLAYS_KEYSPACE: &str = "dns_private_overlays";
 
@@ -46,16 +46,20 @@ impl PrivateOverlayStore {
     /// Stores or updates a private overlay record for the specified owner ArkID.
     pub fn put_overlay(&self, owner_ark_id: &[u8; 32], record: &OverlayRecord) -> Result<()> {
         let key = Self::make_key(owner_ark_id, &record.domain);
-        let serialized = serde_json::to_vec(record)
-            .map_err(|e| DnsError::Serialization(e.to_string()))?;
-        self.keyspace
-            .insert(key, serialized)
-            .map_err(|e| DnsError::Storage(ark_storage::ArkStorageError::Database(e.to_string())))?;
+        let serialized =
+            serde_json::to_vec(record).map_err(|e| DnsError::Serialization(e.to_string()))?;
+        self.keyspace.insert(key, serialized).map_err(|e| {
+            DnsError::Storage(ark_storage::ArkStorageError::Database(e.to_string()))
+        })?;
         Ok(())
     }
 
     /// Retrieves a private overlay record for a specific owner ArkID and domain.
-    pub fn get_overlay(&self, owner_ark_id: &[u8; 32], domain: &str) -> Result<Option<OverlayRecord>> {
+    pub fn get_overlay(
+        &self,
+        owner_ark_id: &[u8; 32],
+        domain: &str,
+    ) -> Result<Option<OverlayRecord>> {
         let key = Self::make_key(owner_ark_id, domain);
         if let Some(bytes) = self
             .keyspace
@@ -80,9 +84,9 @@ impl PrivateOverlayStore {
             .map_err(|e| DnsError::Storage(ark_storage::ArkStorageError::Database(e.to_string())))?
             .is_some();
         if exists {
-            self.keyspace
-                .remove(key)
-                .map_err(|e| DnsError::Storage(ark_storage::ArkStorageError::Database(e.to_string())))?;
+            self.keyspace.remove(key).map_err(|e| {
+                DnsError::Storage(ark_storage::ArkStorageError::Database(e.to_string()))
+            })?;
             Ok(true)
         } else {
             Ok(false)
@@ -93,9 +97,9 @@ impl PrivateOverlayStore {
     pub fn list_overlays(&self, owner_ark_id: &[u8; 32]) -> Result<Vec<OverlayRecord>> {
         let mut results = Vec::new();
         for item in self.keyspace.iter() {
-            let (key, val) = item
-                .into_inner()
-                .map_err(|e| DnsError::Storage(ark_storage::ArkStorageError::Database(e.to_string())))?;
+            let (key, val) = item.into_inner().map_err(|e| {
+                DnsError::Storage(ark_storage::ArkStorageError::Database(e.to_string()))
+            })?;
             if key.len() >= 32 && &key[..32] == owner_ark_id {
                 let record: OverlayRecord = serde_json::from_slice(&val)
                     .map_err(|e| DnsError::Serialization(e.to_string()))?;

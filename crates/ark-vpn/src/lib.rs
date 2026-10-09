@@ -10,7 +10,7 @@ pub mod transport;
 pub mod tun;
 
 pub use acl::{
-    AclEngine, AclVerdict, IpProtocol, VpnAction, VpnAclStats, VpnPeerInfo, VpnSecurityPolicy,
+    AclEngine, AclVerdict, IpProtocol, VpnAclStats, VpnAction, VpnPeerInfo, VpnSecurityPolicy,
 };
 pub use engine::{
     OutboundPacket, RouteMode, VpnEngine, VpnEngineConfig, VpnEngineMetrics, VpnEngineStatus,
@@ -33,6 +33,3 @@ pub use tun::{
     MockTunAdapter, NativeTunAdapter, PacketDirection, VirtualTunAdapter, DEFAULT_SAFE_MTU,
     TCP_MSS_FLOOR,
 };
-
-
-

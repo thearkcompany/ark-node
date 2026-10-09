@@ -18,8 +18,8 @@ impl ArkSocket {
             Domain::IPV4
         };
 
-        let socket = Socket::new(domain, Type::DGRAM, Some(Protocol::UDP))
-            .map_err(ArkError::IoError)?;
+        let socket =
+            Socket::new(domain, Type::DGRAM, Some(Protocol::UDP)).map_err(ArkError::IoError)?;
 
         // Dual-stack IPv6 configuration
         if addr.is_ipv6() {
@@ -27,7 +27,7 @@ impl ArkSocket {
         }
 
         socket.set_nonblocking(true).map_err(ArkError::IoError)?;
-        
+
         // Optimize send and receive buffer sizes for high-throughput P2P
         let _ = socket.set_recv_buffer_size(2 * 1024 * 1024);
         let _ = socket.set_send_buffer_size(2 * 1024 * 1024);
@@ -41,7 +41,10 @@ impl ArkSocket {
     }
 
     pub async fn send_to(&self, buf: &[u8], target: SocketAddr) -> Result<usize> {
-        self.inner.send_to(buf, target).await.map_err(ArkError::IoError)
+        self.inner
+            .send_to(buf, target)
+            .await
+            .map_err(ArkError::IoError)
     }
 
     pub async fn recv_from(&self, buf: &mut [u8]) -> Result<(usize, SocketAddr)> {

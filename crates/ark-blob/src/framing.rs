@@ -60,7 +60,9 @@ impl ShardStreamFrame {
             sender_prefix,
             recipient_prefix,
         );
-        header.validate().map_err(|e| BlobError::InvalidFastHeader(e.to_string()))?;
+        header
+            .validate()
+            .map_err(|e| BlobError::InvalidFastHeader(e.to_string()))?;
 
         let mut out = Vec::with_capacity(FAST_HEADER_SIZE + shard_payload.len());
         out.extend_from_slice(&header.to_bytes());
@@ -82,7 +84,9 @@ impl ShardStreamFrame {
             sender_prefix,
             recipient_prefix,
         );
-        header.validate().map_err(|e| BlobError::InvalidFastHeader(e.to_string()))?;
+        header
+            .validate()
+            .map_err(|e| BlobError::InvalidFastHeader(e.to_string()))?;
 
         writer.write_all(&header.to_bytes())?;
         writer.write_all(shard_payload)?;

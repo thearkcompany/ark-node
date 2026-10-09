@@ -1,7 +1,7 @@
-use std::path::{Path, PathBuf};
-use fjall::{Database, Keyspace, KeyspaceCreateOptions, PersistMode};
 use ark_protocol::envelope::ArkEnvelope;
+use fjall::{Database, Keyspace, KeyspaceCreateOptions, PersistMode};
 use sha3::{Digest, Sha3_256};
+use std::path::{Path, PathBuf};
 
 use crate::config::StorageConfig;
 use crate::error::{ArkStorageError, Result};
@@ -43,9 +43,8 @@ impl StorageEngine {
             .open()
             .map_err(|e| ArkStorageError::Database(e.to_string()))?;
 
-        let make_opts = move || {
-            KeyspaceCreateOptions::default().max_memtable_size(memtable_max_bytes)
-        };
+        let make_opts =
+            move || KeyspaceCreateOptions::default().max_memtable_size(memtable_max_bytes);
 
         let class1_append = db
             .keyspace("class1_append", make_opts)
@@ -272,7 +271,9 @@ impl StorageEngine {
 
         // Check Class 2: Replaceable
         for item in self.class2_replaceable.iter() {
-            let val = item.value().map_err(|e| ArkStorageError::Database(e.to_string()))?;
+            let val = item
+                .value()
+                .map_err(|e| ArkStorageError::Database(e.to_string()))?;
             let env = ArkEnvelope::decode_from_slice(&val)
                 .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
             if let Ok(env_id) = compute_envelope_id(&env) {
@@ -284,7 +285,9 @@ impl StorageEngine {
 
         // Check Class 3: Parameterized Replaceable
         for item in self.class3_param_d.iter() {
-            let val = item.value().map_err(|e| ArkStorageError::Database(e.to_string()))?;
+            let val = item
+                .value()
+                .map_err(|e| ArkStorageError::Database(e.to_string()))?;
             let env = ArkEnvelope::decode_from_slice(&val)
                 .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
             if let Ok(env_id) = compute_envelope_id(&env) {
@@ -369,7 +372,9 @@ impl StorageEngine {
         let mut expired_ids = Vec::new();
 
         for guard in self.class4_index.iter() {
-            let key = guard.key().map_err(|e| ArkStorageError::Database(e.to_string()))?;
+            let key = guard
+                .key()
+                .map_err(|e| ArkStorageError::Database(e.to_string()))?;
             if key.len() == 40 {
                 let exp_ts = u64::from_be_bytes(key[..8].try_into().unwrap());
                 if exp_ts <= current_time {
@@ -449,7 +454,9 @@ impl StorageEngine {
 
         // Check Class 2
         for item in self.class2_replaceable.iter() {
-            let (key, val) = item.into_inner().map_err(|e| ArkStorageError::Database(e.to_string()))?;
+            let (key, val) = item
+                .into_inner()
+                .map_err(|e| ArkStorageError::Database(e.to_string()))?;
             let env = ArkEnvelope::decode_from_slice(&val)
                 .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
             if let Ok(env_id) = compute_envelope_id(&env) {
@@ -464,7 +471,9 @@ impl StorageEngine {
 
         // Check Class 3
         for item in self.class3_param_d.iter() {
-            let (key, val) = item.into_inner().map_err(|e| ArkStorageError::Database(e.to_string()))?;
+            let (key, val) = item
+                .into_inner()
+                .map_err(|e| ArkStorageError::Database(e.to_string()))?;
             let env = ArkEnvelope::decode_from_slice(&val)
                 .map_err(|e| ArkStorageError::Serialization(e.to_string()))?;
             if let Ok(env_id) = compute_envelope_id(&env) {
@@ -543,7 +552,8 @@ pub struct BackgroundSweeperHandle {
 impl BackgroundSweeperHandle {
     /// Signals the background sweeper to stop and waits for the thread to exit.
     pub fn stop(mut self) {
-        self.shutdown.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.shutdown
+            .store(true, std::sync::atomic::Ordering::SeqCst);
         if let Some(handle) = self.handle.take() {
             let _ = handle.join();
         }
@@ -552,7 +562,8 @@ impl BackgroundSweeperHandle {
 
 impl Drop for BackgroundSweeperHandle {
     fn drop(&mut self) {
-        self.shutdown.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.shutdown
+            .store(true, std::sync::atomic::Ordering::SeqCst);
     }
 }
 

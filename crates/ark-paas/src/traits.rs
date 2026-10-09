@@ -1,8 +1,8 @@
 //! Mockable backend traits and in-memory test doubles for Ark Host-ABI.
 
+use crate::error::Result;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use crate::error::Result;
 
 /// Trait for Key-Value storage capability.
 pub trait KvStoreBackend: Send + Sync {
@@ -121,5 +121,3 @@ impl EnvelopeEmitterBackend for InMemoryEnvelopeEmitter {
 
 /// In-memory mock implementation of `PmtClock` aliasing `ark_time::MockPmtClock`.
 pub type InMemoryPmtClock = ark_time::MockPmtClock;
-
-

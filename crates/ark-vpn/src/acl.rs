@@ -186,7 +186,9 @@ impl AclEngine {
         // If the packet's sub_key_epoch is older than the current epoch, drop immediately (< 15 µs).
         if packet_epoch < peer.sub_key_epoch {
             self.stats.denied_packets.fetch_add(1, Ordering::Relaxed);
-            self.stats.revoked_epoch_drops.fetch_add(1, Ordering::Relaxed);
+            self.stats
+                .revoked_epoch_drops
+                .fetch_add(1, Ordering::Relaxed);
             tracing::warn!(
                 peer_id = hex_str(peer_ark_id),
                 packet_epoch,
@@ -262,11 +264,7 @@ impl AclEngine {
     }
 
     /// Evaluate an egress packet read from TUN before transmission to peer.
-    pub fn evaluate_egress(
-        &self,
-        peer_ark_id: &[u8; 32],
-        raw_ip_packet: &[u8],
-    ) -> AclVerdict {
+    pub fn evaluate_egress(&self, peer_ark_id: &[u8; 32], raw_ip_packet: &[u8]) -> AclVerdict {
         let peer_info = {
             let peers = self.peers.read().unwrap();
             peers.get(peer_ark_id).cloned()

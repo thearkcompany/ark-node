@@ -7,9 +7,9 @@
 //! - Header flags (QR, Opcode, AA, TC, RD, RA, RCODE)
 //! - RFC 1035 label compression handling for robust name extraction.
 
+use crate::error::{DnsError, Result};
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, Ipv6Addr};
-use crate::error::{DnsError, Result};
 
 /// DNS Record Types supported according to RFC 1035 & RFC 3596.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -192,7 +192,9 @@ impl DnsHeader {
 
     pub fn parse(buf: &[u8]) -> Result<Self> {
         if buf.len() < 12 {
-            return Err(DnsError::Serialization("Packet too short for DNS header".to_string()));
+            return Err(DnsError::Serialization(
+                "Packet too short for DNS header".to_string(),
+            ));
         }
         let id = u16::from_be_bytes([buf[0], buf[1]]);
         let flags = u16::from_be_bytes([buf[2], buf[3]]);
@@ -315,12 +317,18 @@ impl DnsMessage {
             let (qname, new_offset) = parse_name(buf, offset)?;
             offset = new_offset;
             if offset + 4 > buf.len() {
-                return Err(DnsError::Serialization("Unexpected EOF reading Question".to_string()));
+                return Err(DnsError::Serialization(
+                    "Unexpected EOF reading Question".to_string(),
+                ));
             }
             let qtype = DnsRecordType::from(u16::from_be_bytes([buf[offset], buf[offset + 1]]));
             let qclass = DnsClass::from(u16::from_be_bytes([buf[offset + 2], buf[offset + 3]]));
             offset += 4;
-            questions.push(DnsQuestion { qname, qtype, qclass });
+            questions.push(DnsQuestion {
+                qname,
+                qtype,
+                qclass,
+            });
         }
 
         let mut answers = Vec::with_capacity(header.answer_count as usize);
@@ -398,7 +406,9 @@ fn parse_name(buf: &[u8], mut offset: usize) -> Result<(String, usize)> {
 
     loop {
         if offset >= buf.len() {
-            return Err(DnsError::Serialization("Unexpected EOF reading name".to_string()));
+            return Err(DnsError::Serialization(
+                "Unexpected EOF reading name".to_string(),
+            ));
         }
         let len = buf[offset];
         if len == 0 {
@@ -411,7 +421,9 @@ fn parse_name(buf: &[u8], mut offset: usize) -> Result<(String, usize)> {
         // Pointer (11xxxxxx)
         if (len & 0xC0) == 0xC0 {
             if offset + 1 >= buf.len() {
-                return Err(DnsError::Serialization("Malformed pointer in name".to_string()));
+                return Err(DnsError::Serialization(
+                    "Malformed pointer in name".to_string(),
+                ));
             }
             let pointer_target = (((len & 0x3F) as usize) << 8) | (buf[offset + 1] as usize);
             if !jumped {
@@ -420,7 +432,9 @@ fn parse_name(buf: &[u8], mut offset: usize) -> Result<(String, usize)> {
             }
             jumps_performed += 1;
             if jumps_performed > MAX_JUMPS {
-                return Err(DnsError::Serialization("Compression pointer loop detected".to_string()));
+                return Err(DnsError::Serialization(
+                    "Compression pointer loop detected".to_string(),
+                ));
             }
             offset = pointer_target;
             continue;
@@ -430,7 +444,9 @@ fn parse_name(buf: &[u8], mut offset: usize) -> Result<(String, usize)> {
         let label_len = len as usize;
         offset += 1;
         if offset + label_len > buf.len() {
-            return Err(DnsError::Serialization("Label length exceeds packet bounds".to_string()));
+            return Err(DnsError::Serialization(
+                "Label length exceeds packet bounds".to_string(),
+            ));
         }
         let label = std::str::from_utf8(&buf[offset..offset + label_len])
             .map_err(|e| DnsError::Serialization(format!("Invalid UTF-8 in label: {}", e)))?;
@@ -445,11 +461,19 @@ fn parse_name(buf: &[u8], mut offset: usize) -> Result<(String, usize)> {
 fn parse_record(buf: &[u8], offset: usize) -> Result<(DnsRecord, usize)> {
     let (name, mut current_offset) = parse_name(buf, offset)?;
     if current_offset + 10 > buf.len() {
-        return Err(DnsError::Serialization("Unexpected EOF reading resource record header".to_string()));
+        return Err(DnsError::Serialization(
+            "Unexpected EOF reading resource record header".to_string(),
+        ));
     }
 
-    let rtype = DnsRecordType::from(u16::from_be_bytes([buf[current_offset], buf[current_offset + 1]]));
-    let rclass = DnsClass::from(u16::from_be_bytes([buf[current_offset + 2], buf[current_offset + 3]]));
+    let rtype = DnsRecordType::from(u16::from_be_bytes([
+        buf[current_offset],
+        buf[current_offset + 1],
+    ]));
+    let rclass = DnsClass::from(u16::from_be_bytes([
+        buf[current_offset + 2],
+        buf[current_offset + 3],
+    ]));
     let ttl = u32::from_be_bytes([
         buf[current_offset + 4],
         buf[current_offset + 5],
@@ -460,21 +484,32 @@ fn parse_record(buf: &[u8], offset: usize) -> Result<(DnsRecord, usize)> {
     current_offset += 10;
 
     if current_offset + rdlength > buf.len() {
-        return Err(DnsError::Serialization("RDATA length exceeds buffer bounds".to_string()));
+        return Err(DnsError::Serialization(
+            "RDATA length exceeds buffer bounds".to_string(),
+        ));
     }
     let rdata_bytes = &buf[current_offset..current_offset + rdlength];
 
     let rdata = match rtype {
         DnsRecordType::A => {
             if rdlength != 4 {
-                return Err(DnsError::Serialization("Invalid A record length".to_string()));
+                return Err(DnsError::Serialization(
+                    "Invalid A record length".to_string(),
+                ));
             }
-            let ip = Ipv4Addr::new(rdata_bytes[0], rdata_bytes[1], rdata_bytes[2], rdata_bytes[3]);
+            let ip = Ipv4Addr::new(
+                rdata_bytes[0],
+                rdata_bytes[1],
+                rdata_bytes[2],
+                rdata_bytes[3],
+            );
             DnsRecordData::A(ip)
         }
         DnsRecordType::AAAA => {
             if rdlength != 16 {
-                return Err(DnsError::Serialization("Invalid AAAA record length".to_string()));
+                return Err(DnsError::Serialization(
+                    "Invalid AAAA record length".to_string(),
+                ));
             }
             let mut octets = [0u8; 16];
             octets.copy_from_slice(rdata_bytes);
@@ -487,10 +522,13 @@ fn parse_record(buf: &[u8], offset: usize) -> Result<(DnsRecord, usize)> {
                 let slen = rdata_bytes[txt_offset] as usize;
                 txt_offset += 1;
                 if txt_offset + slen > rdlength {
-                    return Err(DnsError::Serialization("Malformed TXT record chunk".to_string()));
+                    return Err(DnsError::Serialization(
+                        "Malformed TXT record chunk".to_string(),
+                    ));
                 }
-                let s = std::str::from_utf8(&rdata_bytes[txt_offset..txt_offset + slen])
-                    .map_err(|e| DnsError::Serialization(format!("Invalid UTF-8 in TXT record: {}", e)))?;
+                let s = std::str::from_utf8(&rdata_bytes[txt_offset..txt_offset + slen]).map_err(
+                    |e| DnsError::Serialization(format!("Invalid UTF-8 in TXT record: {}", e)),
+                )?;
                 txts.push(s.to_string());
                 txt_offset += slen;
             }
@@ -550,7 +588,9 @@ fn serialize_record(
                 total_len += 1 + s.len();
             }
             if total_len > u16::MAX as usize {
-                return Err(DnsError::Serialization("TXT rdata exceeds maximum length".to_string()));
+                return Err(DnsError::Serialization(
+                    "TXT rdata exceeds maximum length".to_string(),
+                ));
             }
             buf.extend_from_slice(&(total_len as u16).to_be_bytes());
             for s in strings {

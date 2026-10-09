@@ -7,8 +7,8 @@ use tracing::info;
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
     info!("Initializing ARK Node v1...");
-    
+
     ark_cli::run().await?;
-    
+
     Ok(())
 }

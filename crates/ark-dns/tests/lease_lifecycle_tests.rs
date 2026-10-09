@@ -1,13 +1,18 @@
-use std::sync::Arc;
 use ark_dns::error::DnsError;
 use ark_dns::lifecycle::{
-    DomainLeaseState, LeaseLifecycleEngine, MockPmtClock, PmtClock,
-    GRACE_PERIOD_SECS, MAX_LEASE_DURATION_SECS,
+    DomainLeaseState, LeaseLifecycleEngine, MockPmtClock, PmtClock, GRACE_PERIOD_SECS,
+    MAX_LEASE_DURATION_SECS,
 };
 use ark_dns::record::DomainRoutingRecord;
 use ark_dns::SovereignDnsTrie;
+use std::sync::Arc;
 
-fn sample_record(fqdn: &str, owner_key_id: [u8; 16], registered_at: u64, expires_at: u64) -> DomainRoutingRecord {
+fn sample_record(
+    fqdn: &str,
+    owner_key_id: [u8; 16],
+    registered_at: u64,
+    expires_at: u64,
+) -> DomainRoutingRecord {
     DomainRoutingRecord {
         fqdn: fqdn.to_string(),
         owner_key_id,
@@ -32,7 +37,9 @@ fn test_state_machine_transitions() {
     let record = sample_record("alice.ark", owner_a, registered_at, expires_at);
 
     // Initial registration
-    engine.register(record.clone()).expect("registration should succeed");
+    engine
+        .register(record.clone())
+        .expect("registration should succeed");
 
     // 1. Active: now <= T_expire
     clock.set_time(expires_at - 10);
@@ -48,7 +55,10 @@ fn test_state_machine_transitions() {
 
     // 2. Grace Period: T_expire < now <= T_expire + 14 days
     clock.set_time(expires_at + 1);
-    assert_eq!(engine.state_of("alice.ark"), Some(DomainLeaseState::GracePeriod));
+    assert_eq!(
+        engine.state_of("alice.ark"),
+        Some(DomainLeaseState::GracePeriod)
+    );
     // External resolution returns in_grace_period = true (or NXDOMAIN)
     let res_grace = engine.resolve("alice.ark").expect("lookup in grace period");
     assert!(res_grace.is_some());
@@ -56,16 +66,31 @@ fn test_state_machine_transitions() {
 
     // Mid grace period
     clock.set_time(expires_at + 7 * 86400);
-    assert_eq!(engine.state_of("alice.ark"), Some(DomainLeaseState::GracePeriod));
+    assert_eq!(
+        engine.state_of("alice.ark"),
+        Some(DomainLeaseState::GracePeriod)
+    );
 
     // Exactly at boundary: T_expire + 14 days
     clock.set_time(expires_at + GRACE_PERIOD_SECS);
-    assert_eq!(engine.state_of("alice.ark"), Some(DomainLeaseState::GracePeriod));
-    assert!(engine.resolve("alice.ark").unwrap().unwrap().in_grace_period);
+    assert_eq!(
+        engine.state_of("alice.ark"),
+        Some(DomainLeaseState::GracePeriod)
+    );
+    assert!(
+        engine
+            .resolve("alice.ark")
+            .unwrap()
+            .unwrap()
+            .in_grace_period
+    );
 
     // 3. Expired: now > T_expire + 14 days
     clock.set_time(expires_at + GRACE_PERIOD_SECS + 1);
-    assert_eq!(engine.state_of("alice.ark"), Some(DomainLeaseState::Expired));
+    assert_eq!(
+        engine.state_of("alice.ark"),
+        Some(DomainLeaseState::Expired)
+    );
     // Resolution returns None (NXDOMAIN)
     assert!(engine.resolve("alice.ark").unwrap().is_none());
 }
@@ -86,14 +111,23 @@ fn test_grace_period_monopoly_enforcement() {
 
     // Move clock into Grace Period
     clock.set_time(expires_at + 3600);
-    assert_eq!(engine.state_of("alice.ark"), Some(DomainLeaseState::GracePeriod));
+    assert_eq!(
+        engine.state_of("alice.ark"),
+        Some(DomainLeaseState::GracePeriod)
+    );
 
     // Owner B attempts renewal during grace period -> Rejected!
     let new_expires_at = clock.now_pmt() + 86400 * 30;
     let renewal_b = sample_record("alice.ark", owner_b, clock.now_pmt(), new_expires_at);
-    let err = engine.renew(renewal_b).expect_err("should reject renewal by non-owner");
+    let err = engine
+        .renew(renewal_b)
+        .expect_err("should reject renewal by non-owner");
     match err {
-        DnsError::GracePeriodRenewalUnauthorized { fqdn, current_owner, attempted_by } => {
+        DnsError::GracePeriodRenewalUnauthorized {
+            fqdn,
+            current_owner,
+            attempted_by,
+        } => {
             assert_eq!(fqdn, "alice.ark");
             assert_eq!(current_owner, owner_a);
             assert_eq!(attempted_by, owner_b);
@@ -129,10 +163,21 @@ fn test_early_renewal_by_owner() {
     clock.set_time(registered_at + 10 * 86400);
 
     // Attempted renewal by owner B during Active state should also be rejected
-    let renewal_b = sample_record("alice.ark", owner_b, clock.now_pmt(), clock.now_pmt() + 86400 * 30);
-    let err = engine.renew(renewal_b).expect_err("non-owner cannot renew active domain");
+    let renewal_b = sample_record(
+        "alice.ark",
+        owner_b,
+        clock.now_pmt(),
+        clock.now_pmt() + 86400 * 30,
+    );
+    let err = engine
+        .renew(renewal_b)
+        .expect_err("non-owner cannot renew active domain");
     match err {
-        DnsError::UnauthorizedRenewal { fqdn, current_owner, attempted_by } => {
+        DnsError::UnauthorizedRenewal {
+            fqdn,
+            current_owner,
+            attempted_by,
+        } => {
             assert_eq!(fqdn, "alice.ark");
             assert_eq!(current_owner, owner_a);
             assert_eq!(attempted_by, owner_b);
@@ -141,7 +186,12 @@ fn test_early_renewal_by_owner() {
     }
 
     // Owner A renews early
-    let renewal_a = sample_record("alice.ark", owner_a, clock.now_pmt(), clock.now_pmt() + 86400 * 60);
+    let renewal_a = sample_record(
+        "alice.ark",
+        owner_a,
+        clock.now_pmt(),
+        clock.now_pmt() + 86400 * 60,
+    );
     engine.renew(renewal_a).expect("owner can renew early");
     assert_eq!(engine.state_of("alice.ark"), Some(DomainLeaseState::Active));
 }
@@ -161,11 +211,21 @@ fn test_post_grace_eviction_and_new_owner_registration() {
 
     // Advance clock past 14 days grace period
     clock.set_time(expires_at + GRACE_PERIOD_SECS + 100);
-    assert_eq!(engine.state_of("alice.ark"), Some(DomainLeaseState::Expired));
+    assert_eq!(
+        engine.state_of("alice.ark"),
+        Some(DomainLeaseState::Expired)
+    );
 
     // Try to register "alice.ark" with new owner B
-    let reg_b = sample_record("alice.ark", owner_b, clock.now_pmt(), clock.now_pmt() + 86400 * 30);
-    engine.register(reg_b).expect("new owner should be able to register expired domain");
+    let reg_b = sample_record(
+        "alice.ark",
+        owner_b,
+        clock.now_pmt(),
+        clock.now_pmt() + 86400 * 30,
+    );
+    engine
+        .register(reg_b)
+        .expect("new owner should be able to register expired domain");
 
     assert_eq!(engine.state_of("alice.ark"), Some(DomainLeaseState::Active));
     let resolved = engine.resolve("alice.ark").unwrap().unwrap();
@@ -214,15 +274,24 @@ fn test_lease_duration_bounds() {
 
     // Expiration in the past
     let past_rec = sample_record("alice.ark", owner, 1_000_000, 999_999);
-    let err_past = engine.register(past_rec).expect_err("should reject expiration in the past");
+    let err_past = engine
+        .register(past_rec)
+        .expect_err("should reject expiration in the past");
     match err_past {
         DnsError::InvalidLeaseDuration(msg) => assert!(msg.contains("future")),
         other => panic!("Unexpected error: {:?}", other),
     }
 
     // Expiration > 365 days
-    let too_long_rec = sample_record("alice.ark", owner, 1_000_000, 1_000_000 + MAX_LEASE_DURATION_SECS + 1);
-    let err_long = engine.register(too_long_rec).expect_err("should reject duration > 365 days");
+    let too_long_rec = sample_record(
+        "alice.ark",
+        owner,
+        1_000_000,
+        1_000_000 + MAX_LEASE_DURATION_SECS + 1,
+    );
+    let err_long = engine
+        .register(too_long_rec)
+        .expect_err("should reject duration > 365 days");
     match err_long {
         DnsError::InvalidLeaseDuration(msg) => assert!(msg.contains("exceeds")),
         other => panic!("Unexpected error: {:?}", other),
@@ -264,7 +333,10 @@ fn test_register_from_validated_claim() {
 
     // Advance clock past expiration into grace period
     clock.advance(86400 * 30 + 1);
-    assert_eq!(engine.state_of("carol.ark"), Some(DomainLeaseState::GracePeriod));
+    assert_eq!(
+        engine.state_of("carol.ark"),
+        Some(DomainLeaseState::GracePeriod)
+    );
     let resolved_grace = engine.resolve("carol.ark").unwrap().unwrap();
     assert!(resolved_grace.in_grace_period);
 

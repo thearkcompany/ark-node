@@ -24,9 +24,7 @@ pub enum PaasError {
     EpochDeadlineExceeded,
 
     #[error("I/O fuel exhausted (budget: {limit_bytes} bytes)")]
-    IoFuelExhausted {
-        limit_bytes: usize,
-    },
+    IoFuelExhausted { limit_bytes: usize },
 
     #[error("Missing exported entrypoint: '{0}'")]
     ExportNotFound(String),
@@ -46,7 +44,6 @@ pub enum PaasError {
     #[error("Queue error: {0}")]
     QueueError(String),
 }
-
 
 #[derive(Error, Debug)]
 pub enum ArkQueueError {

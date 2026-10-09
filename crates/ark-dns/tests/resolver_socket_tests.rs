@@ -13,7 +13,11 @@ use ark_storage::{StorageConfig, StorageEngine};
 
 struct DummyL2Verifier;
 impl L2ContractVerifier for DummyL2Verifier {
-    fn verify_escrow_contract(&self, _contract_id: &[u8], _owner_key_id: &[u8]) -> Result<bool, DnsError> {
+    fn verify_escrow_contract(
+        &self,
+        _contract_id: &[u8],
+        _owner_key_id: &[u8],
+    ) -> Result<bool, DnsError> {
         Ok(true)
     }
 }
@@ -42,7 +46,9 @@ async fn test_resolver_loopback_private_overlay_query() {
         txt_records: Vec::new(),
         created_at: 1000,
     };
-    engine.register_private_overlay(&owner_ark_id, &overlay).unwrap();
+    engine
+        .register_private_overlay(&owner_ark_id, &overlay)
+        .unwrap();
 
     // Bind stub resolver to dynamic port 127.0.0.1:0
     let config = StubResolverConfig {
@@ -158,7 +164,10 @@ async fn test_resolver_non_ark_with_upstream_forwarding() {
             ttl: 300,
             rdata: DnsRecordData::A("93.184.216.34".parse().unwrap()),
         });
-        upstream_sock.send_to(&resp.to_wire().unwrap(), client).await.unwrap();
+        upstream_sock
+            .send_to(&resp.to_wire().unwrap(), client)
+            .await
+            .unwrap();
     });
 
     let dir = tempdir().unwrap();
@@ -316,7 +325,9 @@ async fn test_resolver_cryptographic_name_query() {
 
     match &resp.answers[0].rdata {
         DnsRecordData::TXT(txts) => {
-            assert!(txts.iter().any(|s| s.contains("peer=") && s.contains(&hex::encode(dummy_hash))));
+            assert!(txts
+                .iter()
+                .any(|s| s.contains("peer=") && s.contains(&hex::encode(dummy_hash))));
         }
         other => panic!("expected TXT, got {:?}", other),
     }
@@ -348,12 +359,10 @@ async fn test_resolver_grace_period_returns_nxdomain() {
         owner_key_id: owner_key,
         envelope_id: [0u8; 32],
     };
-    engine.lifecycle_engine().register_claim(
-        &claim,
-        [0u8; 32],
-        vec!["192.168.1.50".to_string()],
-        vec![],
-    ).unwrap();
+    engine
+        .lifecycle_engine()
+        .register_claim(&claim, [0u8; 32], vec!["192.168.1.50".to_string()], vec![])
+        .unwrap();
 
     // Bind resolver
     let config = StubResolverConfig {
@@ -378,7 +387,10 @@ async fn test_resolver_grace_period_returns_nxdomain() {
         qtype: DnsRecordType::A,
         qclass: DnsClass::IN,
     });
-    client_sock.send_to(&query.to_wire().unwrap(), server_addr).await.unwrap();
+    client_sock
+        .send_to(&query.to_wire().unwrap(), server_addr)
+        .await
+        .unwrap();
 
     let mut buf = vec![0u8; 1024];
     let (n, _) = client_sock.recv_from(&mut buf).await.unwrap();
@@ -396,7 +408,10 @@ async fn test_resolver_grace_period_returns_nxdomain() {
         qtype: DnsRecordType::A,
         qclass: DnsClass::IN,
     });
-    client_sock.send_to(&query2.to_wire().unwrap(), server_addr).await.unwrap();
+    client_sock
+        .send_to(&query2.to_wire().unwrap(), server_addr)
+        .await
+        .unwrap();
 
     let (n2, _) = client_sock.recv_from(&mut buf).await.unwrap();
     let resp2 = DnsMessage::from_wire(&buf[..n2]).unwrap();

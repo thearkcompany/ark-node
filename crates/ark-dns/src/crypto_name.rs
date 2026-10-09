@@ -5,9 +5,9 @@
 //!
 //! Validated and resolved in O(1) time without directory queries.
 
-use sha3::{Digest, Sha3_256};
-use bech32::{Bech32, Hrp};
 use crate::error::{DnsError, Result};
+use bech32::{Bech32, Hrp};
+use sha3::{Digest, Sha3_256};
 
 pub const CRYPTO_NAME_HRP: &str = "ark";
 pub const CRYPTO_NAME_PREFIX: &str = "ark1";
@@ -35,8 +35,7 @@ pub fn format_cryptographic_name(fn_dsa_pubkey: &[u8]) -> Result<String> {
 
 /// Formats a cryptographic domain name directly from a 32-byte IdentityHash.
 pub fn format_cryptographic_name_from_hash(identity_hash: &[u8; 32]) -> Result<String> {
-    let hrp = Hrp::parse(CRYPTO_NAME_HRP)
-        .map_err(|e| DnsError::InvalidBech32(e.to_string()))?;
+    let hrp = Hrp::parse(CRYPTO_NAME_HRP).map_err(|e| DnsError::InvalidBech32(e.to_string()))?;
     let bech32_str = bech32::encode::<Bech32>(hrp, identity_hash)
         .map_err(|e| DnsError::InvalidBech32(e.to_string()))?;
     Ok(format!("{}{}", bech32_str, CRYPTO_NAME_SUFFIX))
@@ -69,8 +68,8 @@ pub fn parse_cryptographic_name(domain: &str) -> Result<[u8; 32]> {
     // Strip the trailing ".ark"
     let bech32_part = &lower[..lower.len() - CRYPTO_NAME_SUFFIX.len()];
 
-    let (hrp, data) = bech32::decode(bech32_part)
-        .map_err(|e| DnsError::InvalidBech32(e.to_string()))?;
+    let (hrp, data) =
+        bech32::decode(bech32_part).map_err(|e| DnsError::InvalidBech32(e.to_string()))?;
 
     if hrp.as_str() != CRYPTO_NAME_HRP {
         return Err(DnsError::InvalidBech32(format!(

@@ -12,7 +12,10 @@ async fn test_socket_dual_stack_binding_and_io() {
     let local2 = socket2.local_addr().expect("Failed to get local_addr");
 
     let payload = b"ping from socket1 to socket2";
-    let sent = socket1.send_to(payload, local2).await.expect("Failed to send");
+    let sent = socket1
+        .send_to(payload, local2)
+        .await
+        .expect("Failed to send");
     assert_eq!(sent, payload.len());
 
     let mut buf = [0u8; 1024];
@@ -114,18 +117,26 @@ async fn test_quic_alpn_negotiation_success() {
     let bound_server_addr = server_endpoint.endpoint.local_addr().unwrap();
 
     let client_addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
-    let client_endpoint = ArkQuicEndpoint::new_client(client_addr)
-        .expect("Failed to start QUIC client");
+    let client_endpoint =
+        ArkQuicEndpoint::new_client(client_addr).expect("Failed to start QUIC client");
 
     // Spawn server accept task
     let server_handle = tokio::spawn(async move {
-        let incoming = server_endpoint.endpoint.accept().await.expect("No incoming connection");
+        let incoming = server_endpoint
+            .endpoint
+            .accept()
+            .await
+            .expect("No incoming connection");
         let conn = incoming.await.expect("Handshake failed on server");
         let (mut send, mut recv) = conn.accept_bi().await.expect("Failed to accept bi-stream");
         let mut buf = [0u8; 4];
-        recv.read_exact(&mut buf).await.expect("Server failed to read");
+        recv.read_exact(&mut buf)
+            .await
+            .expect("Server failed to read");
         assert_eq!(&buf, b"ping");
-        send.write_all(b"pong").await.expect("Server failed to write");
+        send.write_all(b"pong")
+            .await
+            .expect("Server failed to write");
         send.finish().unwrap();
         // Wait for client to finish or closed
         let _ = conn.closed().await;
@@ -141,11 +152,15 @@ async fn test_quic_alpn_negotiation_success() {
     let conn = connecting.await.expect("Client handshake failed");
 
     let (mut send, mut recv) = conn.open_bi().await.expect("Failed to open bi-stream");
-    send.write_all(b"ping").await.expect("Client failed to write");
+    send.write_all(b"ping")
+        .await
+        .expect("Client failed to write");
     send.finish().unwrap();
 
     let mut buf = [0u8; 4];
-    recv.read_exact(&mut buf).await.expect("Client failed to read pong");
+    recv.read_exact(&mut buf)
+        .await
+        .expect("Client failed to read pong");
     assert_eq!(&buf, b"pong");
 
     conn.close(0u32.into(), b"done");
@@ -165,18 +180,22 @@ async fn test_quic_mismatched_alpn_rejection() {
     let client_addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
     let mut client_endpoint = quinn::Endpoint::client(client_addr).unwrap();
 
-    let mut crypto_cfg = rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(rustls::crypto::ring::default_provider()))
-        .with_safe_default_protocol_versions()
-        .unwrap()
-        .dangerous()
-        .with_custom_certificate_verifier(std::sync::Arc::new(DangerousVerifier))
-        .with_no_client_auth();
+    let mut crypto_cfg = rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .unwrap()
+    .dangerous()
+    .with_custom_certificate_verifier(std::sync::Arc::new(DangerousVerifier))
+    .with_no_client_auth();
 
     // Mismatched ALPN protocol
     crypto_cfg.alpn_protocols = vec![b"mismatched-alpn".to_vec()];
 
     let quic_client_config = quinn::crypto::rustls::QuicClientConfig::try_from(crypto_cfg).unwrap();
-    client_endpoint.set_default_client_config(quinn::ClientConfig::new(std::sync::Arc::new(quic_client_config)));
+    client_endpoint.set_default_client_config(quinn::ClientConfig::new(std::sync::Arc::new(
+        quic_client_config,
+    )));
 
     // Spawn server accept task
     let server_handle = tokio::spawn(async move {
@@ -185,11 +204,16 @@ async fn test_quic_mismatched_alpn_rejection() {
         }
     });
 
-    let connecting = client_endpoint.connect(bound_server_addr, "localhost").unwrap();
+    let connecting = client_endpoint
+        .connect(bound_server_addr, "localhost")
+        .unwrap();
     let client_res = connecting.await;
 
     // Connection must fail due to ALPN mismatch
-    assert!(client_res.is_err(), "Handshake with mismatched ALPN should fail");
+    assert!(
+        client_res.is_err(),
+        "Handshake with mismatched ALPN should fail"
+    );
 
     let _ = server_handle.await;
 }

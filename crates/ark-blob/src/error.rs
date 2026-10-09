@@ -78,10 +78,7 @@ pub enum BlobError {
     InvalidSignature(String),
 
     #[error("Safe-ghost lock is active: eviction prevented (homelab ACK not confirmed, PoR challenges: {challenges}/{required})")]
-    SafeGhostLocked {
-        challenges: usize,
-        required: usize,
-    },
+    SafeGhostLocked { challenges: usize, required: usize },
 
     #[error("L2 escrow contract verification failed: {0}")]
     EscrowVerificationFailed(String),

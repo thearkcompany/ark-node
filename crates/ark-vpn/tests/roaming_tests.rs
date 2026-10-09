@@ -37,14 +37,18 @@ fn test_bidirectional_ip_to_peer_lookup() {
     table.insert_session(session_1, endpoint_1, None, 1000);
 
     // 1. Lookup by session_id
-    let entry = table.get_by_session_id(101).expect("Session 101 should exist");
+    let entry = table
+        .get_by_session_id(101)
+        .expect("Session 101 should exist");
     assert_eq!(entry.ark_id, peer_ark_id_1);
     assert_eq!(entry.physical_endpoint, endpoint_1);
     assert_eq!(entry.virtual_addrs.ipv6, addrs_1.ipv6);
     assert_eq!(entry.virtual_addrs.ipv4, addrs_1.ipv4);
 
     // 2. Lookup by ArkID
-    let entry_by_ark = table.get_by_ark_id(&peer_ark_id_1).expect("Lookup by ArkID");
+    let entry_by_ark = table
+        .get_by_ark_id(&peer_ark_id_1)
+        .expect("Lookup by ArkID");
     assert_eq!(entry_by_ark.session.session_id, 101);
 
     // 3. Lookup by IPv6 ULA
@@ -139,27 +143,39 @@ fn test_anti_hijacking_temporal_clock_drift_window() {
 
     // Case 1: Packet timestamp too far in past (> 30s drift)
     let past_timestamp = 1000 - 35; // 35 seconds skew
-    let res_past = table.process_data_packet_and_roam(&packet, hijacked_endpoint, past_timestamp, 1000);
+    let res_past =
+        table.process_data_packet_and_roam(&packet, hijacked_endpoint, past_timestamp, 1000);
     assert!(matches!(res_past, Err(VpnError::ClockDriftExceeded(diff, 30)) if diff == -35));
 
     // Endpoint NOT updated
-    assert_eq!(table.get_by_session_id(404).unwrap().physical_endpoint, legitimate_endpoint);
+    assert_eq!(
+        table.get_by_session_id(404).unwrap().physical_endpoint,
+        legitimate_endpoint
+    );
 
     // Case 2: Packet timestamp too far in future (> 30s drift)
     let future_timestamp = 1000 + 45; // 45 seconds skew
-    let res_future = table.process_data_packet_and_roam(&packet, hijacked_endpoint, future_timestamp, 1000);
+    let res_future =
+        table.process_data_packet_and_roam(&packet, hijacked_endpoint, future_timestamp, 1000);
     assert!(matches!(res_future, Err(VpnError::ClockDriftExceeded(diff, 30)) if diff == 45));
 
     // Endpoint still NOT updated
-    assert_eq!(table.get_by_session_id(404).unwrap().physical_endpoint, legitimate_endpoint);
+    assert_eq!(
+        table.get_by_session_id(404).unwrap().physical_endpoint,
+        legitimate_endpoint
+    );
 
     // Case 3: Packet timestamp within valid window (+/- 30s, e.g. delta 15s)
     let valid_timestamp = 1000 + 15;
-    let res_valid = table.process_data_packet_and_roam(&packet, hijacked_endpoint, valid_timestamp, 1000);
+    let res_valid =
+        table.process_data_packet_and_roam(&packet, hijacked_endpoint, valid_timestamp, 1000);
     assert!(res_valid.is_ok());
 
     // Endpoint IS updated
-    assert_eq!(table.get_by_session_id(404).unwrap().physical_endpoint, hijacked_endpoint);
+    assert_eq!(
+        table.get_by_session_id(404).unwrap().physical_endpoint,
+        hijacked_endpoint
+    );
 }
 
 #[test]
@@ -215,7 +231,10 @@ fn test_anti_hijacking_fn_dsa_signature_verification() {
         2005,
     );
     assert!(res.is_ok());
-    assert_eq!(table.get_by_session_id(606).unwrap().physical_endpoint, new_endpoint);
+    assert_eq!(
+        table.get_by_session_id(606).unwrap().physical_endpoint,
+        new_endpoint
+    );
 
     // 2. Tampered signature or message -> Rejected, endpoint untouched
     let tampered_endpoint: SocketAddr = "198.51.100.1:4444".parse().unwrap();
@@ -229,7 +248,10 @@ fn test_anti_hijacking_fn_dsa_signature_verification() {
         2010,
     );
     assert!(res_tampered.is_err());
-    assert_eq!(table.get_by_session_id(606).unwrap().physical_endpoint, new_endpoint);
+    assert_eq!(
+        table.get_by_session_id(606).unwrap().physical_endpoint,
+        new_endpoint
+    );
 }
 
 #[test]

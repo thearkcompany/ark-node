@@ -33,7 +33,10 @@ impl FnDsaKeyPair {
         let sk_len = sk_bytes.len().min(FN_DSA_512_SECKEY_SIZE);
         secret_key[..sk_len].copy_from_slice(&sk_bytes[..sk_len]);
 
-        Self { public_key, secret_key }
+        Self {
+            public_key,
+            secret_key,
+        }
     }
 
     /// Sign operation producing standardized Falcon-512 signature
@@ -49,10 +52,14 @@ impl FnDsaKeyPair {
 /// Constant-time verification conforming to FIPS 206 parameters
 pub fn verify_fn_dsa_512(pubkey: &[u8], message: &[u8], signature: &[u8]) -> Result<()> {
     if pubkey.len() != FN_DSA_512_PUBKEY_SIZE {
-        return Err(ArkError::CryptoError("Invalid FN-DSA public key size".into()));
+        return Err(ArkError::CryptoError(
+            "Invalid FN-DSA public key size".into(),
+        ));
     }
     if signature.len() != FN_DSA_512_SIGNATURE_SIZE {
-        return Err(ArkError::CryptoError("Invalid FN-DSA signature size".into()));
+        return Err(ArkError::CryptoError(
+            "Invalid FN-DSA signature size".into(),
+        ));
     }
 
     let pk = falcon_rust::falcon512::PublicKey::from_bytes(pubkey)
@@ -64,6 +71,8 @@ pub fn verify_fn_dsa_512(pubkey: &[u8], message: &[u8], signature: &[u8]) -> Res
     if falcon_rust::falcon512::verify(message, &sig, &pk) {
         Ok(())
     } else {
-        Err(ArkError::CryptoError("FN-DSA signature verification failed".into()))
+        Err(ArkError::CryptoError(
+            "FN-DSA signature verification failed".into(),
+        ))
     }
 }

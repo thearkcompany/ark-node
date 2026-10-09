@@ -9,8 +9,8 @@
 use ark_core::constants::FAST_HEADER_SIZE;
 use ark_core::FastHeader;
 use ark_crypto::kmac::Kmac256;
-use bytes::{BufMut, Bytes, BytesMut};
 use bytemuck::{Pod, Zeroable};
+use bytes::{BufMut, Bytes, BytesMut};
 
 use crate::error::{Result, VpnError};
 
@@ -85,7 +85,12 @@ impl MicroHeader {
     }
 
     /// Compute 8-byte session MAC using KMAC256 over session_id, sequence_nonce, and payload.
-    pub fn compute_mac(session_key: &[u8], session_id: u32, sequence_nonce: u32, payload: &[u8]) -> [u8; 8] {
+    pub fn compute_mac(
+        session_key: &[u8],
+        session_id: u32,
+        sequence_nonce: u32,
+        payload: &[u8],
+    ) -> [u8; 8] {
         let mut kmac = Kmac256::new(session_key);
         kmac.update(VPN_SESSION_MAC_DOMAIN);
         kmac.update(&session_id.to_be_bytes());
@@ -98,7 +103,8 @@ impl MicroHeader {
 
     /// Verify the 8-byte session MAC in constant time.
     pub fn verify_mac(&self, session_key: &[u8], payload: &[u8]) -> Result<()> {
-        let expected = Self::compute_mac(session_key, self.session_id, self.sequence_nonce, payload);
+        let expected =
+            Self::compute_mac(session_key, self.session_id, self.sequence_nonce, payload);
         if subtle_slices_equal(&self.session_mac, &expected) {
             Ok(())
         } else {
@@ -137,10 +143,7 @@ pub fn frame_micro_packet(
 }
 
 /// Deframe a MicroHeader framed packet buffer zero-copy, validating header and session MAC.
-pub fn deframe_micro_packet(
-    session_key: &[u8],
-    mut packet: Bytes,
-) -> Result<(MicroHeader, Bytes)> {
+pub fn deframe_micro_packet(session_key: &[u8], mut packet: Bytes) -> Result<(MicroHeader, Bytes)> {
     if packet.len() < MICRO_HEADER_SIZE {
         return Err(VpnError::FramingError(format!(
             "Packet smaller than MicroHeader size: {} < {}",
@@ -213,7 +216,10 @@ pub fn wrap_envelope(
     timestamp: u64,
 ) -> Result<ark_protocol::envelope::ArkEnvelope> {
     let fast_header = [0u8; FAST_HEADER_SIZE];
-    let tags = vec![ark_protocol::tags::BinaryTag::new(0, kind.to_be_bytes().to_vec())];
+    let tags = vec![ark_protocol::tags::BinaryTag::new(
+        0,
+        kind.to_be_bytes().to_vec(),
+    )];
 
     ark_protocol::envelope::ArkEnvelope::new(
         fast_header,
@@ -228,24 +234,31 @@ pub fn wrap_envelope(
     .map_err(|e| VpnError::Crypto(e.to_string()))
 }
 
+/// Unwrapped VPN payload tuple: `(kind, sender_id, recipient_id, payload)`
+pub type UnwrappedVpnPayload = (u32, [u8; 32], [u8; 32], Vec<u8>);
+
 /// Unwrap and validate an `ArkEnvelope` containing tunneled wire traffic.
 /// Verifies retention class 0 classification, expected kind (KIND_VPN_DATA or KIND_VPN_HANDSHAKE),
 /// and extracts `(kind, sender_id, recipient_id, payload)`.
 pub fn unwrap_envelope(
     envelope: &ark_protocol::envelope::ArkEnvelope,
-) -> Result<(u32, [u8; 32], [u8; 32], Vec<u8>)> {
+) -> Result<UnwrappedVpnPayload> {
     let mut sender_id = [0u8; 32];
     if envelope.sender_id.len() == 32 {
         sender_id.copy_from_slice(&envelope.sender_id);
     } else {
-        return Err(VpnError::FramingError("Invalid envelope sender_id length".into()));
+        return Err(VpnError::FramingError(
+            "Invalid envelope sender_id length".into(),
+        ));
     }
 
     let mut recipient_id = [0u8; 32];
     if envelope.recipient_id.len() == 32 {
         recipient_id.copy_from_slice(&envelope.recipient_id);
     } else {
-        return Err(VpnError::FramingError("Invalid envelope recipient_id length".into()));
+        return Err(VpnError::FramingError(
+            "Invalid envelope recipient_id length".into(),
+        ));
     }
 
     // Extract kind from tag 0
@@ -253,7 +266,14 @@ pub fn unwrap_envelope(
         .tags
         .iter()
         .find(|t| t.tag_type == 0 && t.tag_value.len() == 4)
-        .map(|t| u32::from_be_bytes([t.tag_value[0], t.tag_value[1], t.tag_value[2], t.tag_value[3]]))
+        .map(|t| {
+            u32::from_be_bytes([
+                t.tag_value[0],
+                t.tag_value[1],
+                t.tag_value[2],
+                t.tag_value[3],
+            ])
+        })
         .unwrap_or(0);
 
     if kind != KIND_VPN_DATA && kind != KIND_VPN_HANDSHAKE {

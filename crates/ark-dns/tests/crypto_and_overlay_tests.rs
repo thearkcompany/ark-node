@@ -1,12 +1,12 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use ark_crypto::fn_dsa::FnDsaKeyPair;
 use ark_dns::crypto_name::{
     derive_identity_hash, format_cryptographic_name, format_cryptographic_name_from_hash,
     is_cryptographic_name, parse_cryptographic_name, verify_cryptographic_name,
 };
 use ark_dns::overlay::{OverlayRecord, PrivateOverlayStore, DNS_PRIVATE_OVERLAYS_KEYSPACE};
 use ark_dns::DnsError;
-use ark_crypto::fn_dsa::FnDsaKeyPair;
 use rand::rngs::OsRng;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use tempfile::tempdir;
 
 #[test]
@@ -28,19 +28,24 @@ fn test_crypto_name_format_and_parse() {
 
     // Case insensitivity
     let upper_domain = domain.to_ascii_uppercase();
-    let parsed_upper = parse_cryptographic_name(&upper_domain).expect("uppercase parse should succeed");
+    let parsed_upper =
+        parse_cryptographic_name(&upper_domain).expect("uppercase parse should succeed");
     assert_eq!(parsed_upper, expected_hash);
 
     // Identity mismatch
     let other_keypair = FnDsaKeyPair::generate(&mut rng);
     let mismatch_err = verify_cryptographic_name(&domain, &other_keypair.public_key);
-    assert!(matches!(mismatch_err, Err(DnsError::IdentityMismatch { .. })));
+    assert!(matches!(
+        mismatch_err,
+        Err(DnsError::IdentityMismatch { .. })
+    ));
 }
 
 #[test]
 fn test_crypto_name_from_hash() {
     let dummy_hash = [0x5au8; 32];
-    let domain = format_cryptographic_name_from_hash(&dummy_hash).expect("formatting hash succeeds");
+    let domain =
+        format_cryptographic_name_from_hash(&dummy_hash).expect("formatting hash succeeds");
     assert!(is_cryptographic_name(&domain));
     let parsed = parse_cryptographic_name(&domain).expect("parsing succeeds");
     assert_eq!(parsed, dummy_hash);
@@ -68,7 +73,9 @@ fn test_crypto_name_invalid_inputs() {
 
     // Wrong HRP (e.g. btc1...)
     assert!(matches!(
-        parse_cryptographic_name("btc1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqpqqqqq.ark"),
+        parse_cryptographic_name(
+            "btc1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqpqqqqq.ark"
+        ),
         Err(DnsError::NotCryptographicName(_))
     ));
 }
@@ -114,7 +121,10 @@ fn test_private_overlay_crud_and_isolation() {
 
     // Isolated queries
     let retrieved_a = store.get_overlay(&owner_a, "nas.ark").unwrap().unwrap();
-    assert_eq!(retrieved_a.target_ip, IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)));
+    assert_eq!(
+        retrieved_a.target_ip,
+        IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100))
+    );
 
     let retrieved_b = store.get_overlay(&owner_b, "nas.ark").unwrap().unwrap();
     assert_eq!(retrieved_b.target_ip, IpAddr::V6(Ipv6Addr::LOCALHOST));
@@ -158,18 +168,25 @@ fn test_private_overlay_persistence_across_restarts() {
     };
 
     {
-        let engine = ark_storage::StorageEngine::open(dir.path(), ark_storage::StorageConfig::frugal()).unwrap();
+        let engine =
+            ark_storage::StorageEngine::open(dir.path(), ark_storage::StorageConfig::frugal())
+                .unwrap();
         let store = PrivateOverlayStore::new(&engine).unwrap();
         store.put_overlay(&owner, &rec).unwrap();
     }
 
     // Reopen engine
     {
-        let engine = ark_storage::StorageEngine::open(dir.path(), ark_storage::StorageConfig::frugal()).unwrap();
+        let engine =
+            ark_storage::StorageEngine::open(dir.path(), ark_storage::StorageConfig::frugal())
+                .unwrap();
         let store = PrivateOverlayStore::new(&engine).unwrap();
         let retrieved = store.get_overlay(&owner, "gateway.ark").unwrap().unwrap();
         assert_eq!(retrieved.domain, "gateway.ark");
-        assert_eq!(retrieved.target_ip, IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
+        assert_eq!(
+            retrieved.target_ip,
+            IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1))
+        );
         assert_eq!(retrieved.txt_records, vec!["version=1.0".to_string()]);
     }
 }

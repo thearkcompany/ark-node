@@ -46,7 +46,8 @@ fn test_wire_framing_roundtrip_and_zero_copy_inspection() {
     assert!(wire_bytes.len() > FAST_HEADER_SIZE);
 
     // Test zero-copy header inspection
-    let inspected_header = WireFrame::inspect_header(&wire_bytes).expect("Failed to inspect header");
+    let inspected_header =
+        WireFrame::inspect_header(&wire_bytes).expect("Failed to inspect header");
     assert_eq!(inspected_header.magic, MAGIC_VALUE);
     assert_eq!(inspected_header.sender_key_id, sender_id);
     assert_eq!(inspected_header.recipient_key_id, recipient_id);

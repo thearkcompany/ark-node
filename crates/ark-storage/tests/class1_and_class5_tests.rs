@@ -7,14 +7,7 @@ use ark_storage::{
 use tempfile::tempdir;
 
 fn create_envelope(kind: u32, payload: &[u8]) -> ArkEnvelope {
-    let header = ark_core::fast_header::FastHeader::new(
-        0,
-        100,
-        kind,
-        [1u8; 16],
-        [2u8; 16],
-        1,
-    );
+    let header = ark_core::fast_header::FastHeader::new(0, 100, kind, [1u8; 16], [2u8; 16], 1);
     let fast_header = header.to_bytes().to_vec();
 
     ArkEnvelope {
@@ -65,7 +58,9 @@ fn test_class5_strict_worm_immutability_and_idempotency() {
     assert_eq!(outcome1, RetentionOutcome::Stored);
 
     // Duplicate write of identical bytes: IdempotentDuplicate
-    let outcome2 = engine.put_envelope(&env_worm).expect("second identical write");
+    let outcome2 = engine
+        .put_envelope(&env_worm)
+        .expect("second identical write");
     assert_eq!(outcome2, RetentionOutcome::IdempotentDuplicate);
 
     // Retrieve and verify

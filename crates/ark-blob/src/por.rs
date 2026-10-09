@@ -61,12 +61,7 @@ pub struct DePINChallenge {
 
 impl DePINChallenge {
     /// Creates a new challenge with an explicit sub-block index.
-    pub fn new(
-        blob_cid: [u8; 32],
-        shard_index: u32,
-        sub_block_index: u32,
-        seed: [u8; 32],
-    ) -> Self {
+    pub fn new(blob_cid: [u8; 32], shard_index: u32, sub_block_index: u32, seed: [u8; 32]) -> Self {
         Self {
             blob_cid,
             shard_index,
@@ -83,8 +78,8 @@ impl DePINChallenge {
 
     /// Encapsulates this challenge into a canonical `ArkEnvelope` with kind `KIND_DEPIN_CHALLENGE`.
     pub fn to_envelope(&self, sender_id: &[u8; 32]) -> Result<ArkEnvelope> {
-        let payload = serde_json::to_vec(self)
-            .map_err(|e| BlobError::SerializationError(e.to_string()))?;
+        let payload =
+            serde_json::to_vec(self).map_err(|e| BlobError::SerializationError(e.to_string()))?;
 
         let mut sender_key_id = [0u8; 16];
         sender_key_id.copy_from_slice(&sender_id[..16]);
@@ -101,7 +96,10 @@ impl DePINChallenge {
         let tags = vec![
             BinaryTag::new(TAG_CONTENT_CID, self.blob_cid.to_vec()),
             BinaryTag::new(TAG_SHARD_INDEX, self.shard_index.to_be_bytes().to_vec()),
-            BinaryTag::new(TAG_SUB_BLOCK_INDEX, self.sub_block_index.to_be_bytes().to_vec()),
+            BinaryTag::new(
+                TAG_SUB_BLOCK_INDEX,
+                self.sub_block_index.to_be_bytes().to_vec(),
+            ),
             BinaryTag::new(TAG_CHALLENGE_SEED, self.seed.to_vec()),
         ];
 
@@ -131,13 +129,17 @@ impl DePINChallenge {
     /// Converts a Protobuf `DepinPorChallenge` into `DePINChallenge`.
     pub fn from_proto(proto: &ark_protocol::DepinPorChallenge) -> Result<Self> {
         if proto.blob_cid.len() != 32 {
-            return Err(BlobError::SerializationError("Invalid proto blob_cid length".into()));
+            return Err(BlobError::SerializationError(
+                "Invalid proto blob_cid length".into(),
+            ));
         }
         let mut blob_cid = [0u8; 32];
         blob_cid.copy_from_slice(&proto.blob_cid);
 
         if proto.challenge_seed.len() != 32 {
-            return Err(BlobError::SerializationError("Invalid proto challenge_seed length".into()));
+            return Err(BlobError::SerializationError(
+                "Invalid proto challenge_seed length".into(),
+            ));
         }
         let mut seed = [0u8; 32];
         seed.copy_from_slice(&proto.challenge_seed);
@@ -186,7 +188,9 @@ impl DePINChallenge {
             .as_slice();
 
         if blob_cid_bytes.len() != 32 {
-            return Err(BlobError::SerializationError("Invalid TAG_CONTENT_CID length".to_string()));
+            return Err(BlobError::SerializationError(
+                "Invalid TAG_CONTENT_CID length".to_string(),
+            ));
         }
         let mut blob_cid = [0u8; 32];
         blob_cid.copy_from_slice(blob_cid_bytes);
@@ -200,7 +204,9 @@ impl DePINChallenge {
             .as_slice();
 
         if shard_index_bytes.len() != 4 {
-            return Err(BlobError::SerializationError("Invalid TAG_SHARD_INDEX length".to_string()));
+            return Err(BlobError::SerializationError(
+                "Invalid TAG_SHARD_INDEX length".to_string(),
+            ));
         }
         let shard_index = u32::from_be_bytes(shard_index_bytes.try_into().unwrap());
 
@@ -213,14 +219,22 @@ impl DePINChallenge {
             .as_slice();
 
         if seed_bytes.len() != 32 {
-            return Err(BlobError::SerializationError("Invalid TAG_CHALLENGE_SEED length".to_string()));
+            return Err(BlobError::SerializationError(
+                "Invalid TAG_CHALLENGE_SEED length".to_string(),
+            ));
         }
         let mut seed = [0u8; 32];
         seed.copy_from_slice(seed_bytes);
 
-        let sub_block_index = if let Some(tag) = envelope.tags.iter().find(|t| t.tag_type == TAG_SUB_BLOCK_INDEX) {
+        let sub_block_index = if let Some(tag) = envelope
+            .tags
+            .iter()
+            .find(|t| t.tag_type == TAG_SUB_BLOCK_INDEX)
+        {
             if tag.tag_value.len() != 4 {
-                return Err(BlobError::SerializationError("Invalid TAG_SUB_BLOCK_INDEX length".to_string()));
+                return Err(BlobError::SerializationError(
+                    "Invalid TAG_SUB_BLOCK_INDEX length".to_string(),
+                ));
             }
             u32::from_be_bytes(tag.tag_value.as_slice().try_into().unwrap())
         } else {
@@ -277,7 +291,11 @@ impl DePINChallengeResponse {
         let mac = compute_sub_block_kmac(&challenge.seed, &sub_block);
 
         // Merkle proof inclusion
-        let proof = ShardMerkleProof::generate(shard, challenge.shard_index, challenge.sub_block_index as usize)?;
+        let proof = ShardMerkleProof::generate(
+            shard,
+            challenge.shard_index,
+            challenge.sub_block_index as usize,
+        )?;
 
         Ok(Self {
             blob_cid: challenge.blob_cid,
@@ -344,7 +362,10 @@ impl DePINChallengeResponse {
         let tags = vec![
             BinaryTag::new(TAG_CONTENT_CID, self.blob_cid.to_vec()),
             BinaryTag::new(TAG_SHARD_INDEX, self.shard_index.to_be_bytes().to_vec()),
-            BinaryTag::new(TAG_SUB_BLOCK_INDEX, self.sub_block_index.to_be_bytes().to_vec()),
+            BinaryTag::new(
+                TAG_SUB_BLOCK_INDEX,
+                self.sub_block_index.to_be_bytes().to_vec(),
+            ),
         ];
 
         ArkEnvelope::new(
@@ -375,13 +396,17 @@ impl DePINChallengeResponse {
     /// Converts a Protobuf `DepinPorResponse` into `DePINChallengeResponse`.
     pub fn from_proto(proto: &ark_protocol::DepinPorResponse) -> Result<Self> {
         if proto.blob_cid.len() != 32 {
-            return Err(BlobError::SerializationError("Invalid proto blob_cid length".into()));
+            return Err(BlobError::SerializationError(
+                "Invalid proto blob_cid length".into(),
+            ));
         }
         let mut blob_cid = [0u8; 32];
         blob_cid.copy_from_slice(&proto.blob_cid);
 
         if proto.kmac_digest.len() != 32 {
-            return Err(BlobError::SerializationError("Invalid proto kmac_digest length".into()));
+            return Err(BlobError::SerializationError(
+                "Invalid proto kmac_digest length".into(),
+            ));
         }
         let mut mac = [0u8; 32];
         mac.copy_from_slice(&proto.kmac_digest);

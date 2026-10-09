@@ -5,9 +5,8 @@ use wasmtime::{Caller, Linker};
 
 use crate::error::{PaasError, Result};
 use crate::traits::{
-    BlobReaderBackend, EnvelopeEmitterBackend, InMemoryBlobReader,
-    InMemoryEnvelopeEmitter, InMemoryKvStore, InMemoryPmtClock,
-    KvStoreBackend,
+    BlobReaderBackend, EnvelopeEmitterBackend, InMemoryBlobReader, InMemoryEnvelopeEmitter,
+    InMemoryKvStore, InMemoryPmtClock, KvStoreBackend,
 };
 use crate::worker::WorkerStoreData;
 
@@ -135,13 +134,17 @@ pub fn register_host_abi(linker: &mut Linker<WorkerStoreData>) -> Result<()> {
              out_max_len: u32|
              -> std::result::Result<i32, wasmtime::Error> {
                 // Deduct key read fuel
-                caller.data_mut().abi_state.deduct_io_fuel(key_len as usize)
+                caller
+                    .data_mut()
+                    .abi_state
+                    .deduct_io_fuel(key_len as usize)
                     .map_err(|e| wasmtime::Error::msg(e.to_string()))?;
 
                 let key = read_guest_memory(&mut caller, key_ptr, key_len)?;
                 let kv_backend = Arc::clone(&caller.data().abi_state.kv_backend);
 
-                let val_opt = kv_backend.get(&key)
+                let val_opt = kv_backend
+                    .get(&key)
                     .map_err(|e| wasmtime::Error::msg(e.to_string()))?;
 
                 match val_opt {
@@ -152,7 +155,10 @@ pub fn register_host_abi(linker: &mut Linker<WorkerStoreData>) -> Result<()> {
                         }
 
                         // Deduct value write fuel
-                        caller.data_mut().abi_state.deduct_io_fuel(val_len)
+                        caller
+                            .data_mut()
+                            .abi_state
+                            .deduct_io_fuel(val_len)
                             .map_err(|e| wasmtime::Error::msg(e.to_string()))?;
 
                         write_guest_memory(&mut caller, out_ptr, &val)?;
@@ -162,7 +168,9 @@ pub fn register_host_abi(linker: &mut Linker<WorkerStoreData>) -> Result<()> {
                 }
             },
         )
-        .map_err(|e| PaasError::InstantiationFailed(format!("Failed to bind ark_host_kv_get: {e}")))?;
+        .map_err(|e| {
+            PaasError::InstantiationFailed(format!("Failed to bind ark_host_kv_get: {e}"))
+        })?;
 
     // 2. ark_host_kv_set(key_ptr: u32, key_len: u32, val_ptr: u32, val_len: u32) -> i32
     // Returns 0 on success.
@@ -180,20 +188,26 @@ pub fn register_host_abi(linker: &mut Linker<WorkerStoreData>) -> Result<()> {
                 let total_bytes = (key_len as usize)
                     .checked_add(val_len as usize)
                     .ok_or_else(|| wasmtime::Error::msg("Length overflow"))?;
-                caller.data_mut().abi_state.deduct_io_fuel(total_bytes)
+                caller
+                    .data_mut()
+                    .abi_state
+                    .deduct_io_fuel(total_bytes)
                     .map_err(|e| wasmtime::Error::msg(e.to_string()))?;
 
                 let key = read_guest_memory(&mut caller, key_ptr, key_len)?;
                 let val = read_guest_memory(&mut caller, val_ptr, val_len)?;
 
                 let kv_backend = Arc::clone(&caller.data().abi_state.kv_backend);
-                kv_backend.set(&key, &val)
+                kv_backend
+                    .set(&key, &val)
                     .map_err(|e| wasmtime::Error::msg(e.to_string()))?;
 
                 Ok(0)
             },
         )
-        .map_err(|e| PaasError::InstantiationFailed(format!("Failed to bind ark_host_kv_set: {e}")))?;
+        .map_err(|e| {
+            PaasError::InstantiationFailed(format!("Failed to bind ark_host_kv_set: {e}"))
+        })?;
 
     // 3. ark_host_blob_read(cid_ptr: u32, cid_len: u32, offset: u64, out_ptr: u32, out_max_len: u32) -> i32
     // Returns number of bytes written, -1 if cid not found.
@@ -209,20 +223,27 @@ pub fn register_host_abi(linker: &mut Linker<WorkerStoreData>) -> Result<()> {
              out_max_len: u32|
              -> std::result::Result<i32, wasmtime::Error> {
                 // Deduct CID read fuel
-                caller.data_mut().abi_state.deduct_io_fuel(cid_len as usize)
+                caller
+                    .data_mut()
+                    .abi_state
+                    .deduct_io_fuel(cid_len as usize)
                     .map_err(|e| wasmtime::Error::msg(e.to_string()))?;
 
                 let cid = read_guest_memory(&mut caller, cid_ptr, cid_len)?;
                 let blob_backend = Arc::clone(&caller.data().abi_state.blob_backend);
 
-                let chunk_opt = blob_backend.read(&cid, offset, out_max_len as usize)
+                let chunk_opt = blob_backend
+                    .read(&cid, offset, out_max_len as usize)
                     .map_err(|e| wasmtime::Error::msg(e.to_string()))?;
 
                 match chunk_opt {
                     Some(chunk) => {
                         let chunk_len = chunk.len();
                         // Deduct blob payload write fuel
-                        caller.data_mut().abi_state.deduct_io_fuel(chunk_len)
+                        caller
+                            .data_mut()
+                            .abi_state
+                            .deduct_io_fuel(chunk_len)
                             .map_err(|e| wasmtime::Error::msg(e.to_string()))?;
 
                         write_guest_memory(&mut caller, out_ptr, &chunk)?;
@@ -232,7 +253,9 @@ pub fn register_host_abi(linker: &mut Linker<WorkerStoreData>) -> Result<()> {
                 }
             },
         )
-        .map_err(|e| PaasError::InstantiationFailed(format!("Failed to bind ark_host_blob_read: {e}")))?;
+        .map_err(|e| {
+            PaasError::InstantiationFailed(format!("Failed to bind ark_host_blob_read: {e}"))
+        })?;
 
     // 4. ark_host_envelope_emit(env_ptr: u32, env_len: u32) -> i32
     // Returns 0 on success.
@@ -245,19 +268,25 @@ pub fn register_host_abi(linker: &mut Linker<WorkerStoreData>) -> Result<()> {
              env_len: u32|
              -> std::result::Result<i32, wasmtime::Error> {
                 // Deduct envelope bytes from I/O fuel pool
-                caller.data_mut().abi_state.deduct_io_fuel(env_len as usize)
+                caller
+                    .data_mut()
+                    .abi_state
+                    .deduct_io_fuel(env_len as usize)
                     .map_err(|e| wasmtime::Error::msg(e.to_string()))?;
 
                 let env_bytes = read_guest_memory(&mut caller, env_ptr, env_len)?;
                 let envelope_backend = Arc::clone(&caller.data().abi_state.envelope_backend);
 
-                envelope_backend.emit(&env_bytes)
+                envelope_backend
+                    .emit(&env_bytes)
                     .map_err(|e| wasmtime::Error::msg(e.to_string()))?;
 
                 Ok(0)
             },
         )
-        .map_err(|e| PaasError::InstantiationFailed(format!("Failed to bind ark_host_envelope_emit: {e}")))?;
+        .map_err(|e| {
+            PaasError::InstantiationFailed(format!("Failed to bind ark_host_envelope_emit: {e}"))
+        })?;
 
     // 5. ark_host_now_pmt() -> u64
     // Returns PMT timestamp.
@@ -269,7 +298,9 @@ pub fn register_host_abi(linker: &mut Linker<WorkerStoreData>) -> Result<()> {
                 caller.data().abi_state.pmt_backend.now_pmt()
             },
         )
-        .map_err(|e| PaasError::InstantiationFailed(format!("Failed to bind ark_host_now_pmt: {e}")))?;
+        .map_err(|e| {
+            PaasError::InstantiationFailed(format!("Failed to bind ark_host_now_pmt: {e}"))
+        })?;
 
     // 6. ark_host_log(level: u32, msg_ptr: u32, msg_len: u32)
     // Logs guest message and tracks in host state.
@@ -283,7 +314,10 @@ pub fn register_host_abi(linker: &mut Linker<WorkerStoreData>) -> Result<()> {
              msg_len: u32|
              -> std::result::Result<(), wasmtime::Error> {
                 // Log messages also consume I/O fuel to prevent log DoS
-                caller.data_mut().abi_state.deduct_io_fuel(msg_len as usize)
+                caller
+                    .data_mut()
+                    .abi_state
+                    .deduct_io_fuel(msg_len as usize)
                     .map_err(|e| wasmtime::Error::msg(e.to_string()))?;
 
                 let msg_bytes = read_guest_memory(&mut caller, msg_ptr, msg_len)?;

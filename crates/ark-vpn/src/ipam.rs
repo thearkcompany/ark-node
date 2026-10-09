@@ -5,8 +5,8 @@
 //! - IPv6 Unique Local Address (`fd00::/8`): Prefix `fd00::` with the bottom 120 bits derived from `SHA3-256(ArkID)`.
 //! - Synthetic IPv4 CGNAT alias (`100.64.0.0/10`): Derived from `SHA3-256(ArkID)` within the 22-bit host space.
 
-use std::net::{Ipv4Addr, Ipv6Addr};
 use sha3::{Digest, Sha3_256};
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 /// Dual-Stack addressing container for a participant node.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
