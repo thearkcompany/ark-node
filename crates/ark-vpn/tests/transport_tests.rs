@@ -252,3 +252,90 @@ async fn test_pipeline_outbound_relay_routing_and_sink_drop_metrics() {
     engine.stop().await.unwrap();
     let _ = handle.await;
 }
+
+#[tokio::test]
+async fn test_unified_duplex_lifecycle_supervision_start_and_stop() {
+    use ark_crypto::identity::PersistentIdentity;
+    use ark_vpn::engine::{VpnEngine, VpnEngineConfig, VpnEngineStatus};
+    use ark_vpn::tun::MockTunAdapter;
+    use ark_vpn::acl::{IpProtocol, VpnAction, VpnSecurityPolicy};
+    use ark_vpn::pqmt::VpnSession;
+    use ark_vpn::DeterministicIpam;
+    use rand_chacha::rand_core::SeedableRng;
+
+    let mut rng = rand_chacha::ChaCha20Rng::seed_from_u64(0x9999);
+    let identity = PersistentIdentity::generate(&mut rng);
+    let my_ark_id = identity.ark_id;
+    let peer_identity = PersistentIdentity::generate(&mut rng);
+    let peer_ark_id = peer_identity.ark_id;
+
+    let my_addrs = DeterministicIpam::derive_from_ark_id(&my_ark_id);
+    let peer_addrs = DeterministicIpam::derive_from_ark_id(&peer_ark_id);
+
+    let tun = Arc::new(MockTunAdapter::new("tun0", 1200));
+    let transport_sink = Arc::new(ChannelTransportSink::new(10));
+    let mut rx = transport_sink.take_receiver().unwrap();
+
+    let engine = Arc::new(
+        VpnEngine::new(identity, tun.clone(), VpnEngineConfig::default())
+            .with_transport_sink(transport_sink.clone()),
+    );
+
+    assert_eq!(engine.status(), VpnEngineStatus::Stopped);
+
+    let peer_endpoint = "192.168.1.100:51820".parse().unwrap();
+    engine.add_peer(peer_ark_id, peer_endpoint, None).await.unwrap();
+
+    let session = VpnSession {
+        session_id: 200,
+        peer_ark_id,
+        send_key: [0x77u8; 32],
+        recv_key: [0x88u8; 32],
+        send_seq: 1,
+        recv_seq: 0,
+    };
+    engine.pqmt().insert_session(session.clone());
+    engine.roaming().insert_session(session, peer_endpoint, None, 1000);
+
+    engine.apply_policy(VpnSecurityPolicy {
+        source_ark_id: None,
+        destination_port: None,
+        protocol: IpProtocol::Any,
+        action: VpnAction::Allow,
+    }).unwrap();
+
+    // Call start(Arc::clone(&engine)) or start(&self) without manually calling spawn_packet_pipeline!
+    engine.start().await.unwrap();
+    assert_eq!(engine.status(), VpnEngineStatus::Running);
+
+    // Send packet from TUN adapter
+    let mut ipv6_pkt = Vec::new();
+    ipv6_pkt.push(0x60);
+    ipv6_pkt.extend_from_slice(&[0, 0, 0]);
+    let payload = b"Lifecycle supervised packet";
+    let payload_len = (payload.len() + 8) as u16;
+    ipv6_pkt.extend_from_slice(&payload_len.to_be_bytes());
+    ipv6_pkt.push(17);
+    ipv6_pkt.push(64);
+    ipv6_pkt.extend_from_slice(&my_addrs.ipv6.octets());
+    ipv6_pkt.extend_from_slice(&peer_addrs.ipv6.octets());
+    ipv6_pkt.extend_from_slice(&9000u16.to_be_bytes());
+    ipv6_pkt.extend_from_slice(&9001u16.to_be_bytes());
+    ipv6_pkt.extend_from_slice(&payload_len.to_be_bytes());
+    ipv6_pkt.extend_from_slice(&[0, 0]);
+    ipv6_pkt.extend_from_slice(payload);
+
+    tun.inject_packet(ipv6_pkt.clone()).await.unwrap();
+
+    // Outbound packet MUST be received because start() automatically spawned and supervised the pipeline
+    let transmitted = tokio::time::timeout(Duration::from_millis(500), rx.recv())
+        .await
+        .expect("pipeline should be running and transmit")
+        .expect("should receive outbound packet");
+
+    assert_eq!(transmitted.recipient_id, peer_ark_id);
+
+    // Call stop() which signals shutdown and joins/awaits the task handle
+    engine.stop().await.unwrap();
+    assert_eq!(engine.status(), VpnEngineStatus::Stopped);
+}

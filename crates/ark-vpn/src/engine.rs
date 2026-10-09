@@ -129,10 +129,11 @@ pub struct VpnEngine {
     pqmt: Arc<PqmtEngine>,
     roaming: Arc<RoamingTable>,
     acl: Arc<AclEngine>,
-    relays: RwLock<HashMap<[u8; 32], SocketAddr>>,
-    peer_routes: RwLock<HashMap<[u8; 32], PeerRouteState>>,
+    relays: Arc<RwLock<HashMap<[u8; 32], SocketAddr>>>,
+    peer_routes: Arc<RwLock<HashMap<[u8; 32], PeerRouteState>>>,
     status: RwLock<VpnEngineStatus>,
-    metrics: InternalEngineMetrics,
+    metrics: Arc<InternalEngineMetrics>,
+    pipeline_handle: tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
     shutdown_tx: watch::Sender<bool>,
     _shutdown_rx: watch::Receiver<bool>,
 }
@@ -158,10 +159,11 @@ impl VpnEngine {
             pqmt,
             roaming,
             acl,
-            relays: RwLock::new(HashMap::new()),
-            peer_routes: RwLock::new(HashMap::new()),
+            relays: Arc::new(RwLock::new(HashMap::new())),
+            peer_routes: Arc::new(RwLock::new(HashMap::new())),
             status: RwLock::new(VpnEngineStatus::Stopped),
-            metrics: InternalEngineMetrics::default(),
+            metrics: Arc::new(InternalEngineMetrics::default()),
+            pipeline_handle: tokio::sync::Mutex::new(None),
             shutdown_tx,
             _shutdown_rx: shutdown_rx,
         }
@@ -194,7 +196,7 @@ impl VpnEngine {
         DeterministicIpam::derive_from_ark_id(&self.identity.ark_id)
     }
 
-    /// Start the VPN engine and background worker loops.
+    /// Start the VPN engine and supervise background worker loops.
     pub async fn start(&self) -> Result<()> {
         let mut status = self.status.write().unwrap();
         if *status == VpnEngineStatus::Running {
@@ -202,8 +204,152 @@ impl VpnEngine {
         }
         *status = VpnEngineStatus::Starting;
         let _ = self.shutdown_tx.send(false);
+
+        // Automatically spawn and supervise background packet pipeline if not already running
+        let mut handle_guard = self.pipeline_handle.lock().await;
+        if handle_guard.is_none() {
+            let handle = self.spawn_pipeline_task();
+            *handle_guard = Some(handle);
+        }
+
         *status = VpnEngineStatus::Running;
         Ok(())
+    }
+
+    /// Internal helper to spawn the background packet pipeline task.
+    fn spawn_pipeline_task(&self) -> tokio::task::JoinHandle<()> {
+        let tun = Arc::clone(&self.tun);
+        let pqmt = Arc::clone(&self.pqmt);
+        let roaming = Arc::clone(&self.roaming);
+        let acl = Arc::clone(&self.acl);
+        let relays = Arc::clone(&self.relays);
+        let peer_routes = Arc::clone(&self.peer_routes);
+        let metrics = Arc::clone(&self.metrics);
+        let mut shutdown_rx = self.shutdown_tx.subscribe();
+
+        let transport_sink_opt = self.transport_sink.read().unwrap().clone();
+
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    changed = shutdown_rx.changed() => {
+                        if changed.is_err() || *shutdown_rx.borrow() {
+                            break;
+                        }
+                    }
+                    pkt_res = tun.read_packet() => {
+                        match pkt_res {
+                            Ok(packet) => {
+                                if packet.is_empty() {
+                                    continue;
+                                }
+                                // Destination IP
+                                let dst_ip = match packet[0] >> 4 {
+                                    4 => {
+                                        if packet.len() < 20 {
+                                            metrics.dropped_errors.fetch_add(1, Ordering::Relaxed);
+                                            continue;
+                                        }
+                                        let octets: [u8; 4] = match packet[16..20].try_into() {
+                                            Ok(o) => o,
+                                            Err(_) => {
+                                                metrics.dropped_errors.fetch_add(1, Ordering::Relaxed);
+                                                continue;
+                                            }
+                                        };
+                                        std::net::IpAddr::V4(std::net::Ipv4Addr::from(octets))
+                                    }
+                                    6 => {
+                                        if packet.len() < 40 {
+                                            metrics.dropped_errors.fetch_add(1, Ordering::Relaxed);
+                                            continue;
+                                        }
+                                        let octets: [u8; 16] = match packet[24..40].try_into() {
+                                            Ok(o) => o,
+                                            Err(_) => {
+                                                metrics.dropped_errors.fetch_add(1, Ordering::Relaxed);
+                                                continue;
+                                            }
+                                        };
+                                        std::net::IpAddr::V6(std::net::Ipv6Addr::from(octets))
+                                    }
+                                    _ => {
+                                        metrics.dropped_errors.fetch_add(1, Ordering::Relaxed);
+                                        continue;
+                                    }
+                                };
+
+                                let peer_entry = match dst_ip {
+                                    std::net::IpAddr::V4(v4) => roaming.get_by_ipv4(&v4),
+                                    std::net::IpAddr::V6(v6) => roaming.get_by_ipv6(&v6),
+                                };
+
+                                let peer = match peer_entry {
+                                    Some(p) => p,
+                                    None => {
+                                        metrics.dropped_no_route.fetch_add(1, Ordering::Relaxed);
+                                        continue;
+                                    }
+                                };
+
+                                if acl.evaluate_egress(&peer.ark_id, &packet) != crate::acl::AclVerdict::Allow {
+                                    metrics.dropped_acl.fetch_add(1, Ordering::Relaxed);
+                                    continue;
+                                }
+
+                                let framed_bytes = match pqmt.frame_data_packet(peer.session.session_id, &packet) {
+                                    Ok(fb) => fb,
+                                    Err(_) => {
+                                        metrics.dropped_errors.fetch_add(1, Ordering::Relaxed);
+                                        continue;
+                                    }
+                                };
+
+                                let route_mode = {
+                                    let routes = peer_routes.read().unwrap();
+                                    routes.get(&peer.ark_id).map(|r| r.route_mode).unwrap_or(RouteMode::DirectP2p)
+                                };
+
+                                let out_pkt = match route_mode {
+                                    RouteMode::DirectP2p => {
+                                        metrics.p2p_packets.fetch_add(1, Ordering::Relaxed);
+                                        OutboundPacket {
+                                            recipient_id: peer.ark_id,
+                                            target_endpoint: peer.physical_endpoint,
+                                            route_mode: RouteMode::DirectP2p,
+                                            payload: framed_bytes.to_vec(),
+                                        }
+                                    }
+                                    RouteMode::Relayed => {
+                                        metrics.relayed_packets.fetch_add(1, Ordering::Relaxed);
+                                        let relays_guard = relays.read().unwrap();
+                                        let relay_endpoint = relays_guard.values().next().copied().unwrap_or(peer.physical_endpoint);
+                                        OutboundPacket {
+                                            recipient_id: peer.ark_id,
+                                            target_endpoint: relay_endpoint,
+                                            route_mode: RouteMode::Relayed,
+                                            payload: framed_bytes.to_vec(),
+                                        }
+                                    }
+                                };
+
+                                metrics.packets_sent.fetch_add(1, Ordering::Relaxed);
+                                metrics.bytes_sent.fetch_add(packet.len() as u64, Ordering::Relaxed);
+
+                                if let Some(sink) = &transport_sink_opt {
+                                    if let Err(_) = sink.send_packet(out_pkt).await {
+                                        metrics.dropped_errors.fetch_add(1, Ordering::Relaxed);
+                                    }
+                                }
+                            }
+                            Err(_) => {
+                                tokio::time::sleep(Duration::from_millis(10)).await;
+                            }
+                        }
+                    }
+                }
+            }
+        })
     }
 
     /// Spawn packet pipeline connecting TUN adapter to mesh routing.
@@ -397,7 +543,7 @@ impl VpnEngine {
         Ok(())
     }
 
-    /// Stop the VPN engine cleanly.
+    /// Stop the VPN engine cleanly and await task termination.
     pub async fn stop(&self) -> Result<()> {
         let mut status = self.status.write().unwrap();
         if *status == VpnEngineStatus::Stopped {
@@ -405,6 +551,13 @@ impl VpnEngine {
         }
         *status = VpnEngineStatus::Stopping;
         let _ = self.shutdown_tx.send(true);
+
+        // Await background packet pipeline task termination
+        let mut handle_guard = self.pipeline_handle.lock().await;
+        if let Some(handle) = handle_guard.take() {
+            let _ = handle.await;
+        }
+
         *status = VpnEngineStatus::Stopped;
         Ok(())
     }
