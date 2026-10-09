@@ -293,3 +293,193 @@ async fn test_vpn_engine_dual_node_mesh_pipeline_roaming_and_failover() {
     engine_a.stop().await.unwrap();
     engine_b.stop().await.unwrap();
 }
+
+#[tokio::test]
+async fn test_e2e_duplex_tun_to_wire_to_tun_mesh_pipeline() {
+    use ark_vpn::pqmt::VpnSession;
+    use ark_vpn::transport::ChannelTransportSink;
+    use ark_vpn::DeterministicIpam;
+
+    let mut rng = rand_chacha::ChaCha20Rng::seed_from_u64(0xFEED);
+
+    // 1. Initialize Node A and Node B
+    let id_a = PersistentIdentity::generate(&mut rng);
+    let id_a_ark = id_a.ark_id;
+    let tun_a = Arc::new(MockTunAdapter::new("tunA", 1200));
+    let sink_a = Arc::new(ChannelTransportSink::new(100));
+    let mut rx_a = sink_a.take_receiver().unwrap();
+
+    let engine_a = Arc::new(
+        VpnEngine::new(id_a, tun_a.clone(), VpnEngineConfig::default())
+            .with_transport_sink(sink_a),
+    );
+
+    let id_b = PersistentIdentity::generate(&mut rng);
+    let id_b_ark = id_b.ark_id;
+    let tun_b = Arc::new(MockTunAdapter::new("tunB", 1200));
+    let sink_b = Arc::new(ChannelTransportSink::new(100));
+    let mut rx_b = sink_b.take_receiver().unwrap();
+
+    let engine_b = Arc::new(
+        VpnEngine::new(id_b, tun_b.clone(), VpnEngineConfig::default())
+            .with_transport_sink(sink_b),
+    );
+
+    let addrs_a = DeterministicIpam::derive_from_ark_id(&id_a_ark);
+    let addrs_b = DeterministicIpam::derive_from_ark_id(&id_b_ark);
+
+    let endpoint_a: SocketAddr = "192.168.1.10:51820".parse().unwrap();
+    let endpoint_b: SocketAddr = "192.168.1.20:51820".parse().unwrap();
+
+    engine_a.add_peer(id_b_ark, endpoint_b, None).await.unwrap();
+    engine_b.add_peer(id_a_ark, endpoint_a, None).await.unwrap();
+
+    // Security policies: Allow all mesh traffic
+    engine_a.apply_policy(VpnSecurityPolicy {
+        source_ark_id: None,
+        destination_port: None,
+        protocol: IpProtocol::Any,
+        action: VpnAction::Allow,
+    }).unwrap();
+    engine_b.apply_policy(VpnSecurityPolicy {
+        source_ark_id: None,
+        destination_port: None,
+        protocol: IpProtocol::Any,
+        action: VpnAction::Allow,
+    }).unwrap();
+
+    // Establish sessions
+    let session_id = 777u32;
+    let key_a_to_b = [0x33u8; 32];
+    let key_b_to_a = [0x44u8; 32];
+
+    let session_on_a = VpnSession {
+        session_id,
+        peer_ark_id: id_b_ark,
+        send_key: key_a_to_b,
+        recv_key: key_b_to_a,
+        send_seq: 1,
+        recv_seq: 0,
+    };
+    engine_a.pqmt().insert_session(session_on_a.clone());
+    engine_a.roaming().insert_session(session_on_a, endpoint_b, None, 2000);
+
+    let session_on_b = VpnSession {
+        session_id,
+        peer_ark_id: id_a_ark,
+        send_key: key_b_to_a,
+        recv_key: key_a_to_b,
+        send_seq: 1,
+        recv_seq: 0,
+    };
+    engine_b.pqmt().insert_session(session_on_b.clone());
+    engine_b.roaming().insert_session(session_on_b, endpoint_a, None, 2000);
+
+    // 2. Start engines with unified lifecycle supervision!
+    engine_a.start().await.unwrap();
+    engine_b.start().await.unwrap();
+
+    // 3. Outbound test: Inject IPv6 packet into Node A's MockTunAdapter
+    let mut ipv6_pkt = Vec::new();
+    ipv6_pkt.push(0x60);
+    ipv6_pkt.extend_from_slice(&[0, 0, 0]);
+    let payload_data = b"Bi-directional Duplex Mesh Integration Test";
+    let payload_len = (payload_data.len() + 8) as u16;
+    ipv6_pkt.extend_from_slice(&payload_len.to_be_bytes());
+    ipv6_pkt.push(17); // UDP
+    ipv6_pkt.push(64);
+    ipv6_pkt.extend_from_slice(&addrs_a.ipv6.octets());
+    ipv6_pkt.extend_from_slice(&addrs_b.ipv6.octets());
+    ipv6_pkt.extend_from_slice(&7000u16.to_be_bytes());
+    ipv6_pkt.extend_from_slice(&8000u16.to_be_bytes());
+    ipv6_pkt.extend_from_slice(&payload_len.to_be_bytes());
+    ipv6_pkt.extend_from_slice(&[0, 0]);
+    ipv6_pkt.extend_from_slice(payload_data);
+
+    tun_a.inject_packet(ipv6_pkt.clone()).await.unwrap();
+
+    // Verify packet emerges encapsulated in Node A's ChannelTransportSink
+    let wire_pkt_a = tokio::time::timeout(Duration::from_millis(500), rx_a.recv())
+        .await
+        .expect("wire packet from Node A sink")
+        .expect("received packet");
+
+    assert_eq!(wire_pkt_a.recipient_id, id_b_ark);
+    assert_eq!(wire_pkt_a.target_endpoint, endpoint_b);
+    assert_eq!(wire_pkt_a.route_mode, RouteMode::DirectP2p);
+
+    // 4. Inbound test: Deliver encapsulated packet from Node A into Node B's engine
+    engine_b
+        .process_inbound_packet(&wire_pkt_a.payload, endpoint_a, 2000, 2000)
+        .await
+        .expect("process inbound on Node B");
+
+    // Plaintext IP packet must appear in Node B's TUN adapter
+    let tun_b_received = tun_b.read_outbound().await.expect("TUN B received packet");
+    assert_eq!(tun_b_received, ipv6_pkt);
+
+    // 5. Reverse transmission: Node B replies with IPv4 CGNAT packet back to Node A
+    let mut ipv4_pkt = Vec::new();
+    ipv4_pkt.push(0x45);
+    ipv4_pkt.push(0x00);
+    let reply_payload = b"Duplex Reply IPv4";
+    let reply_len = (20 + 8 + reply_payload.len()) as u16;
+    ipv4_pkt.extend_from_slice(&reply_len.to_be_bytes());
+    ipv4_pkt.extend_from_slice(&[0, 0, 0, 0]);
+    ipv4_pkt.push(64);
+    ipv4_pkt.push(17);
+    ipv4_pkt.extend_from_slice(&[0, 0]);
+    ipv4_pkt.extend_from_slice(&addrs_b.ipv4.octets());
+    ipv4_pkt.extend_from_slice(&addrs_a.ipv4.octets());
+    ipv4_pkt.extend_from_slice(&8000u16.to_be_bytes());
+    ipv4_pkt.extend_from_slice(&7000u16.to_be_bytes());
+    let v4_udp_len = (8 + reply_payload.len()) as u16;
+    ipv4_pkt.extend_from_slice(&v4_udp_len.to_be_bytes());
+    ipv4_pkt.extend_from_slice(&[0, 0]);
+    ipv4_pkt.extend_from_slice(reply_payload);
+
+    tun_b.inject_packet(ipv4_pkt.clone()).await.unwrap();
+
+    let wire_pkt_b = tokio::time::timeout(Duration::from_millis(500), rx_b.recv())
+        .await
+        .expect("wire packet from Node B sink")
+        .expect("received packet");
+
+    assert_eq!(wire_pkt_b.recipient_id, id_a_ark);
+    assert_eq!(wire_pkt_b.target_endpoint, endpoint_a);
+
+    // Ingest into Node A
+    engine_a
+        .process_inbound_packet(&wire_pkt_b.payload, endpoint_b, 2005, 2005)
+        .await
+        .unwrap();
+
+    let tun_a_received = tun_a.read_outbound().await.expect("TUN A received packet");
+    assert_eq!(tun_a_received, ipv4_pkt);
+
+    // 6. Failover test: Simulate unreachable peer and verify blind relay routing
+    let relay_endpoint: SocketAddr = "10.0.0.1:9999".parse().unwrap();
+    let relay_id = [0xCCu8; 32];
+    engine_a.add_relay(relay_id, relay_endpoint);
+
+    engine_a.simulate_p2p_failure(&id_b_ark);
+    assert_eq!(engine_a.get_route_mode(&id_b_ark), Some(RouteMode::Relayed));
+
+    tun_a.inject_packet(ipv6_pkt.clone()).await.unwrap();
+    let relayed_pkt = tokio::time::timeout(Duration::from_millis(500), rx_a.recv())
+        .await
+        .expect("relayed packet from Node A")
+        .expect("received packet");
+
+    assert_eq!(relayed_pkt.recipient_id, id_b_ark);
+    assert_eq!(relayed_pkt.target_endpoint, relay_endpoint);
+    assert_eq!(relayed_pkt.route_mode, RouteMode::Relayed);
+
+    // 7. Clean shutdown test: Calling stop().await halts all loops cleanly
+    engine_a.stop().await.expect("stop engine A");
+    engine_b.stop().await.expect("stop engine B");
+
+    assert_eq!(engine_a.status(), VpnEngineStatus::Stopped);
+    assert_eq!(engine_b.status(), VpnEngineStatus::Stopped);
+}
+
