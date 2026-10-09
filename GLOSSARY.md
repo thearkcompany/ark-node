@@ -200,7 +200,7 @@ The durable persistence and consistency manager for Web-of-Trust data, coordinat
 ### Anti-Entropy CRDT Synchronization
 The deterministic state reconciliation protocol between peer nodes using Merkle Search Trees (MST) under namespace `ark/wot/v1`, ensuring eventual consistency of trust attestations and active revocations without global consensus coordinators.
 
-## Node Runtime & Subsystem Orchestration (ADR-0015)
+## Node Runtime & Subsystem Orchestration (ADR-0015, ADR-0017)
 
 ### NodeRuntime
 The unified runtime facade and orchestration core (`crates/ark-runtime`) of an ARK sovereign daemon. Encapsulates socket lifecycle, QUIC connection pooling under ALPN `ark-pqc/v1`, wire-speed packet demultiplexing, background task supervision with `CancellationToken` and `JoinSet`, and deterministic routing across all protocol subsystem engines.
@@ -210,3 +210,10 @@ An asynchronous, thread-safe handle returned upon spawning a `NodeRuntime`. Expo
 
 ### EnvelopeDispatcher
 The internal demultiplexing and dispatch router of `NodeRuntime`. Inspects incoming `FastHeader` attributes, envelope `kind` identifiers, and core tag masks to synchronously and safely direct decoded `ArkEnvelope` messages to their target subsystem engines (Storage, CRDT MST, DNS, Blob, PaaS, VPN, WoT) under strict peripheral fault isolation.
+
+### Subsystem Ingress Seam
+The architectural boundary across which decoded protocol containers enter an autonomous subsystem engine for domain validation and state transition. Isolates transport-level wire demultiplexing from internal subsystem semantics.
+
+### Envelope Ingestion
+The multi-phase admission procedure wherein an incoming protocol envelope undergoes cryptographic and anti-Sybil validation prior to state transition or persistent storage. Prevents malformed, unverified, or fraudulent envelopes from polluting node state or durable storage.
+
