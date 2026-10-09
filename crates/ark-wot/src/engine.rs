@@ -1,7 +1,7 @@
 //! Unified WotEngine Facade, CRDT MST Anti-Entropy Synchronization & Subsystem Adapters (ACP-04).
 
 use std::sync::Arc;
-use ark_core::error::{ArkError, Result};
+use ark_core::error::Result;
 use ark_crdt::{MstConfig, MstEngine};
 use ark_protocol::envelope::ArkEnvelope;
 use ark_storage::StorageEngine;
@@ -90,122 +90,31 @@ impl WotEngine {
 
     /// Ingest and store a verified TrustAttestation, updating Fjall LSM, CRDT MST, and cache.
     pub fn record_attestation(&self, attestation: TrustAttestation, issuer_pubkey: &[u8]) -> Result<()> {
-        self.store.save_attestation(&attestation, issuer_pubkey)?;
-
-        // CRDT MST ingestion under CRDT_NAMESPACE_WOT
-        let envelope = attestation.to_envelope(issuer_pubkey)?;
-        self.sync_mst(&attestation.issuer_id, &attestation.subject_id, &envelope);
-        Ok(())
+        self.store.save_attestation(&attestation, issuer_pubkey)
     }
 
     /// Ingest and store a verified TrustRevocation, updating Fjall LSM, CRDT MST, and immediately truncating trust paths.
     pub fn revoke_attestation(&self, revocation: TrustRevocation, issuer_pubkey: &[u8]) -> Result<()> {
-        self.store.save_revocation(&revocation, issuer_pubkey)?;
-
-        let envelope = revocation.to_envelope(issuer_pubkey)?;
-        self.sync_mst(&revocation.issuer_id, &revocation.subject_id, &envelope);
-        Ok(())
+        self.store.save_revocation(&revocation, issuer_pubkey)
     }
 
-    /// Deep WoT envelope ingestion interface (ADR-0017).
+    /// Deep WoT envelope ingestion interface (ADR-0017, ADR-0020).
     ///
-    /// Validates `TAG_WOT_PUBKEY`, checks `issuer_id == SHA3-256(pubkey)`,
-    /// verifies post-quantum signature (FN-DSA-512) over canonical payload/attestation/revocation,
-    /// persists to `WotStore`, updates the local trust graph and evaluation cache,
-    /// and synchronizes `MstEngine` under `CRDT_NAMESPACE_WOT`.
+    /// Delegates zero-trust validation, cryptographic signature verification,
+    /// consensus drift checking, persistence, MST indexing, and cache update to `WotStore`.
     ///
     /// Rejects malformed or unverified envelopes with descriptive errors without polluting storage.
     pub fn ingest_envelope(&self, envelope: &ArkEnvelope) -> Result<()> {
-        use ark_crypto::fn_dsa::FN_DSA_512_PUBKEY_SIZE;
-        use sha3::{Digest, Sha3_256};
-
-        let kind = ark_storage::get_envelope_kind(envelope);
-
-        // 1. Extract TAG_WOT_PUBKEY
-        let pubkey_tag = envelope
-            .tags
-            .iter()
-            .find(|tag| tag.tag_type == crate::crypto::TAG_WOT_PUBKEY)
-            .ok_or_else(|| {
-                ArkError::TagError(
-                    "Envelope missing required TAG_WOT_PUBKEY tag".to_string(),
-                )
-            })?;
-
-        let issuer_pubkey = &pubkey_tag.tag_value;
-        if issuer_pubkey.len() != FN_DSA_512_PUBKEY_SIZE {
-            return Err(ark_core::error::ArkError::CryptoError(format!(
-                "Invalid issuer public key size: {} bytes, expected {} bytes",
-                issuer_pubkey.len(),
-                FN_DSA_512_PUBKEY_SIZE
-            )));
-        }
-
-        // 2. Validate issuer identity derivation: issuer_id == SHA3-256(pubkey)
-        let derived_issuer_id: [u8; 32] = Sha3_256::digest(issuer_pubkey).into();
-
-        if envelope.sender_id.as_slice() != derived_issuer_id.as_slice() {
-            return Err(ark_core::error::ArkError::CryptoError(
-                "Public key does not derive envelope sender_id".to_string(),
-            ));
-        }
-
-        // 3. Dispatch based on envelope kind
-        match kind {
-            crate::crypto::KIND_WOT_ATTESTATION => {
-                let attestation = TrustAttestation::from_envelope(envelope)?;
-                if attestation.issuer_id != derived_issuer_id {
-                    return Err(ark_core::error::ArkError::CryptoError(
-                        "Public key does not match attestation issuer_id".to_string(),
-                    ));
-                }
-
-                // Cryptographic signature and bound verification
-                attestation.verify_signature(issuer_pubkey)?;
-
-                // Persist to WotStore (Fjall LSM + trust graph + evaluation cache)
-                self.store.save_attestation(&attestation, issuer_pubkey)?;
-
-                // Synchronize MstEngine under CRDT_NAMESPACE_WOT
-                self.sync_mst(&attestation.issuer_id, &attestation.subject_id, envelope);
-
-                Ok(())
-            }
-            crate::crypto::KIND_WOT_REVOCATION => {
-                let revocation = TrustRevocation::from_envelope(envelope)?;
-                if revocation.issuer_id != derived_issuer_id {
-                    return Err(ark_core::error::ArkError::CryptoError(
-                        "Public key does not match revocation issuer_id".to_string(),
-                    ));
-                }
-
-                // Cryptographic signature verification
-                revocation.verify_signature(issuer_pubkey)?;
-
-                // Persist to WotStore (Fjall LSM + immediate edge truncation in graph + cache refresh)
-                self.store.save_revocation(&revocation, issuer_pubkey)?;
-
-                // Synchronize MstEngine under CRDT_NAMESPACE_WOT
-                self.sync_mst(&revocation.issuer_id, &revocation.subject_id, envelope);
-
-                Ok(())
-            }
-            other => Err(ArkError::SerializationError(format!(
-                "Unsupported WoT envelope kind: 0x{:04x}, expected 0x{:04x} (attestation) or 0x{:04x} (revocation)",
-                other,
-                crate::crypto::KIND_WOT_ATTESTATION,
-                crate::crypto::KIND_WOT_REVOCATION,
-            ))),
-        }
+        let current_pmt = self.clock.now_pmt();
+        self.store.ingest_crdt_envelope(envelope, current_pmt)
     }
 
     /// Synchronizes an envelope into the MST under `CRDT_NAMESPACE_WOT` keyed by issuer_id || subject_id.
     pub fn sync_mst(&self, issuer_id: &[u8; 32], subject_id: &[u8; 32], envelope: &ArkEnvelope) {
-        let mut key = Vec::with_capacity(64);
-        key.extend_from_slice(issuer_id);
-        key.extend_from_slice(subject_id);
+        let key = WotStore::make_relation_key(issuer_id, subject_id);
         let _ = self.mst_engine.put(CRDT_NAMESPACE_WOT, &key, envelope);
     }
+
 
 
     /// Anti-entropy subgraph synchronization returning attestations since the specified PMT epoch.
