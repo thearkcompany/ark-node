@@ -90,8 +90,8 @@ async fn test_subsystem_dispatch_routing_and_fault_isolation() {
         wot_subject_id,
         0.8,
         wot_scopes,
-        1_700_000_000,
-        1_700_000_000 + 30 * 86400,
+        now,
+        now + 30 * 86400,
         2,
         &wot_issuer_key,
     ).unwrap();

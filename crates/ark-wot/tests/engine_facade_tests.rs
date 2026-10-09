@@ -127,7 +127,7 @@ fn test_wot_engine_ingest_envelope_lifecycle_and_adversarial_rejection() {
     let storage = Arc::new(StorageEngine::open(dir.path(), StorageConfig::default()).unwrap());
     let clock = Arc::new(ark_time::MockPmtClock::new(2000));
 
-    let engine = WotEngine::open(local_id, storage.clone(), clock).unwrap();
+    let engine = WotEngine::open(local_id, storage.clone(), clock.clone()).unwrap();
 
     // 1. Initial state: peer_id is Untrusted
     assert_eq!(engine.evaluate_trust(&peer_id).tier, TrustTier::Untrusted);
@@ -229,8 +229,10 @@ fn test_wot_engine_ingest_envelope_lifecycle_and_adversarial_rejection() {
     bad_rev_corrupt_sig.payload = tampered_rev.to_cbor().unwrap();
     let err_rev_sig = engine.ingest_envelope(&bad_rev_corrupt_sig);
     assert!(err_rev_sig.is_err(), "Must reject revocation with corrupted signature");
-    // Peer should still be trusted
     assert_eq!(engine.evaluate_trust(&peer_id).tier, TrustTier::Trusted);
+
+    // Advance clock to match revocation timestamp (2100)
+    clock.set_time(2100);
 
     // Ingest valid revocation
     engine.ingest_envelope(&rev_envelope).expect("Valid revocation ingestion must succeed");
